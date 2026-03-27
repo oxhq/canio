@@ -1,0 +1,75 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/php-fpm.Dockerfile
+    working_dir: /workspace/examples/laravel-app/app
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://127.0.0.1:8080
+      CANIO_RUNTIME_BASE_URL: http://stagehand:9514
+      CANIO_RUNTIME_SHARED_SECRET: canio-compose-secret
+      CANIO_PUSH_WEBHOOK_SECRET: canio-compose-secret
+      CANIO_OPS_PRESET: local-open
+      CANIO_RUNTIME_TIMEOUT: 120
+    volumes:
+      - ..:/workspace
+    depends_on:
+      - redis
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - app
+      - stagehand
+    ports:
+      - "8080:80"
+    volumes:
+      - ..:/workspace
+      - ./nginx/canio.conf:/etc/nginx/conf.d/default.conf:ro
+
+  stagehand:
+    build:
+      context: ..
+      dockerfile: docker/stagehand.Dockerfile
+    command:
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9514"
+      - --chromium-path
+      - /usr/bin/chromium
+      - --state-dir
+      - /var/lib/canio/state
+      - --log-format
+      - json
+      - --job-backend
+      - redis
+      - --job-workers
+      - "2"
+      - --job-redis-host
+      - redis
+      - --job-redis-port
+      - "6379"
+      - --auth-shared-secret
+      - canio-compose-secret
+      - --event-webhook-url
+      - http://nginx/canio/webhooks/stagehand/jobs
+      - --event-webhook-secret
+      - canio-compose-secret
+    depends_on:
+      - redis
+    ports:
+      - "9514:9514"
+    volumes:
+      - stagehand-state:/var/lib/canio/state
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  stagehand-state:

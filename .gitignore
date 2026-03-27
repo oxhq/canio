@@ -1,0 +1,12 @@
+/bin/
+/packages/laravel/vendor/
+/packages/laravel/.phpunit.cache/
+/runtime/stagehand/.gocache/
+/runtime/stagehand/bin/
+/runtime/stagehand/coverage.out
+/runtime/stagehand/*.test
+/runtime/stagehand/test-output/
+/runtime/stagehand/stagehand
+/examples/laravel-app/app/
+/docker/.env
+.DS_Store

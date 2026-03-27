@@ -1,0 +1,35 @@
+[Unit]
+Description=Canio Stagehand Runtime
+After=network.target redis.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/canio
+EnvironmentFile=-/etc/canio/stagehand.env
+ExecStart=/bin/sh -lc 'exec /usr/local/bin/stagehand serve \
+  --host "${CANIO_RUNTIME_HOST:-127.0.0.1}" \
+  --port "${CANIO_RUNTIME_PORT:-9514}" \
+  --state-dir "${CANIO_STATE_DIR:-/var/lib/canio/state}" \
+  --log-file "${CANIO_LOG_FILE:-/var/log/canio/stagehand.log}" \
+  --log-format "${CANIO_LOG_FORMAT:-json}" \
+  --chromium-path "${CANIO_CHROMIUM_PATH:-/usr/bin/chromium}" \
+  --job-backend "${CANIO_JOB_BACKEND:-redis}" \
+  --job-workers "${CANIO_JOB_WORKERS:-2}" \
+  --job-redis-host "${CANIO_REDIS_HOST:-127.0.0.1}" \
+  --job-redis-port "${CANIO_REDIS_PORT:-6379}" \
+  --auth-shared-secret "${CANIO_RUNTIME_SHARED_SECRET:-}" \
+  --event-webhook-url "${CANIO_EVENT_WEBHOOK_URL:-}" \
+  --event-webhook-secret "${CANIO_EVENT_WEBHOOK_SECRET:-}"'
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/canio /var/log/canio
+
+[Install]
+WantedBy=multi-user.target

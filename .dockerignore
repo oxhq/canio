@@ -1,0 +1,12 @@
+.git
+.github
+packages/laravel/vendor
+packages/laravel/.phpunit.cache
+runtime/stagehand/.gocache
+runtime/stagehand/test-output
+runtime/stagehand/*.test
+examples/laravel-app/app/vendor
+examples/laravel-app/app/node_modules
+examples/laravel-app/app/storage/logs
+examples/laravel-app/app/bootstrap/cache
+bin

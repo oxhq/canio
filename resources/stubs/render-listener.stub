@@ -1,0 +1,16 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Listeners;
+
+class HandleCanioRenderCompleted
+{
+    /**
+     * Stub kept in the repo so the runtime event model has a clear app-side shape.
+     */
+    public function handle(object $event): void
+    {
+        // Persist metrics, notify users, or enqueue follow-up work.
+    }
+}
