@@ -18,8 +18,11 @@ abstract class TestCase extends Orchestra
 
     protected function getEnvironmentSetUp($app): void
     {
+        $app['config']->set('app.env', 'testing');
         $app['config']->set('app.url', 'https://canio.test');
         $app['config']->set('cache.default', 'array');
+        $app['config']->set('canio.ops.enabled', true);
+        $app['config']->set('canio.ops.access.preset', 'local-open');
         $app['config']->set('filesystems.default', 'local');
         $app['config']->set('filesystems.disks.local', [
             'driver' => 'local',

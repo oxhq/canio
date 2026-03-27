@@ -27,6 +27,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: runtime/stagehand/go.mod
+          cache-dependency-path: runtime/stagehand/go.sum
 
       - name: Install PHP dependencies
         working-directory: packages/laravel
@@ -73,6 +74,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: runtime/stagehand/go.mod
+          cache-dependency-path: runtime/stagehand/go.sum
 
       - name: Build stagehand binary
         working-directory: runtime/stagehand

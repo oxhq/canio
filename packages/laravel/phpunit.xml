@@ -2,6 +2,9 @@
 <phpunit bootstrap="vendor/autoload.php"
          cacheDirectory=".phpunit.cache"
          colors="true">
+    <php>
+        <env name="APP_ENV" value="testing"/>
+    </php>
     <testsuites>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>

@@ -48,6 +48,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: runtime/stagehand/go.mod
+          cache-dependency-path: runtime/stagehand/go.sum
 
       - name: Run runtime tests
         run: go test ./... -timeout 120s
