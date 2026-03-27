@@ -66,6 +66,7 @@ func runServe(args []string) int {
 	fs.StringVar(&cfg.ChromiumPath, "chromium-path", "", "Optional Chromium or Chrome executable path")
 	fs.StringVar(&cfg.UserDataDir, "user-data-dir", "", "Optional Chromium user data directory")
 	fs.BoolVar(&cfg.Headless, "headless", cfg.Headless, "Run Chromium in headless mode")
+	fs.BoolVar(&cfg.DisableSandbox, "no-sandbox", cfg.DisableSandbox, "Disable Chromium sandboxing for CI or rootless containers")
 	fs.BoolVar(&cfg.IgnoreHTTPSErrors, "ignore-https-errors", cfg.IgnoreHTTPSErrors, "Ignore certificate errors for local/self-signed environments")
 	fs.StringVar(&cfg.AuthSharedSecret, "auth-shared-secret", cfg.AuthSharedSecret, "Shared secret used to sign Stagehand requests")
 	fs.StringVar(&cfg.AuthAlgorithm, "auth-algorithm", cfg.AuthAlgorithm, "Request signing algorithm identifier")
@@ -123,6 +124,7 @@ func runRender(args []string) int {
 	fs.StringVar(&cfg.ChromiumPath, "chromium-path", "", "Optional Chromium or Chrome executable path")
 	fs.StringVar(&cfg.UserDataDir, "user-data-dir", "", "Optional Chromium user data directory")
 	fs.BoolVar(&cfg.Headless, "headless", cfg.Headless, "Run Chromium in headless mode")
+	fs.BoolVar(&cfg.DisableSandbox, "no-sandbox", cfg.DisableSandbox, "Disable Chromium sandboxing for CI or rootless containers")
 	fs.BoolVar(&cfg.IgnoreHTTPSErrors, "ignore-https-errors", cfg.IgnoreHTTPSErrors, "Ignore certificate errors for local/self-signed environments")
 	fs.StringVar(&cfg.AuthSharedSecret, "auth-shared-secret", cfg.AuthSharedSecret, "Shared secret used to sign Stagehand requests")
 	fs.StringVar(&cfg.AuthAlgorithm, "auth-algorithm", cfg.AuthAlgorithm, "Request signing algorithm identifier")
@@ -176,6 +178,7 @@ func runReplay(args []string) int {
 	fs.StringVar(&cfg.ChromiumPath, "chromium-path", "", "Optional Chromium or Chrome executable path")
 	fs.StringVar(&cfg.UserDataDir, "user-data-dir", "", "Optional Chromium user data directory")
 	fs.BoolVar(&cfg.Headless, "headless", cfg.Headless, "Run Chromium in headless mode")
+	fs.BoolVar(&cfg.DisableSandbox, "no-sandbox", cfg.DisableSandbox, "Disable Chromium sandboxing for CI or rootless containers")
 	fs.BoolVar(&cfg.IgnoreHTTPSErrors, "ignore-https-errors", cfg.IgnoreHTTPSErrors, "Ignore certificate errors for local/self-signed environments")
 	applyPoolFlags(fs, &cfg)
 

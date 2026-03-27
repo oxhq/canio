@@ -16,7 +16,7 @@ func TestRendererRendersHTMLWithCDP(t *testing.T) {
 		t.Skip("Chrome/Chromium is not available on this machine")
 	}
 
-	renderer := New(config.Default())
+	renderer := New(testRuntimeConfig())
 	defer renderer.Close()
 
 	pdfBytes, warnings, debugArtifacts, err := renderer.Render(context.Background(), contracts.RenderSpec{
@@ -51,6 +51,15 @@ func TestRendererRendersHTMLWithCDP(t *testing.T) {
 	if debugArtifacts != nil {
 		t.Fatalf("expected debug artifacts to be nil when debug mode is disabled")
 	}
+}
+
+func testRuntimeConfig() config.RuntimeConfig {
+	cfg := config.Default()
+	if os.Getenv("CI") != "" {
+		cfg.DisableSandbox = true
+	}
+
+	return cfg
 }
 
 func browserAvailable() bool {

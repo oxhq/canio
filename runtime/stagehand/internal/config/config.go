@@ -12,6 +12,7 @@ type RuntimeConfig struct {
 	ChromiumPath        string
 	UserDataDir         string
 	Headless            bool
+	DisableSandbox      bool
 	IgnoreHTTPSErrors   bool
 	BrowserPoolSize     int
 	BrowserPoolWarm     int
@@ -47,6 +48,7 @@ func Default() RuntimeConfig {
 		LogFormat:           "json",
 		RequestLogging:      true,
 		Headless:            true,
+		DisableSandbox:      false,
 		IgnoreHTTPSErrors:   true,
 		BrowserPoolSize:     2,
 		BrowserPoolWarm:     1,

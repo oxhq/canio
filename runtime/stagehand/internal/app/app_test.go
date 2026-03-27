@@ -18,7 +18,7 @@ func TestRenderReturnsInlinePDFPayload(t *testing.T) {
 		t.Skip("Chrome/Chromium is not available on this machine")
 	}
 
-	runtime := New(config.Default())
+	runtime := New(testRuntimeConfig())
 	defer runtime.Close()
 
 	result, err := runtime.Render(context.Background(), contracts.RenderSpec{
@@ -66,6 +66,9 @@ func TestDebugRenderStoresArtifactsAndReplayWorks(t *testing.T) {
 	}
 
 	cfg := config.Default()
+	if os.Getenv("CI") != "" {
+		cfg.DisableSandbox = true
+	}
 	cfg.StateDir = t.TempDir()
 
 	runtime := New(cfg)
@@ -136,6 +139,9 @@ func TestDispatchQueuesJobAndReturnsCompletedResult(t *testing.T) {
 	}
 
 	cfg := config.Default()
+	if os.Getenv("CI") != "" {
+		cfg.DisableSandbox = true
+	}
 	cfg.StateDir = t.TempDir()
 
 	runtime := New(cfg)
@@ -217,4 +223,13 @@ func browserAvailable() bool {
 	}
 
 	return false
+}
+
+func testRuntimeConfig() config.RuntimeConfig {
+	cfg := config.Default()
+	if os.Getenv("CI") != "" {
+		cfg.DisableSandbox = true
+	}
+
+	return cfg
 }

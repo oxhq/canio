@@ -28,6 +28,7 @@ final class CanioServeCommand extends Command
         $chromiumPath = trim((string) data_get($runtime, 'chromium.path', ''));
         $userDataDir = trim((string) data_get($runtime, 'chromium.user_data_dir', ''));
         $headless = (bool) data_get($runtime, 'chromium.headless', true);
+        $noSandbox = (bool) data_get($runtime, 'chromium.no_sandbox', false);
         $ignoreHttpsErrors = (bool) data_get($runtime, 'chromium.ignore_https_errors', true);
         $browserPoolSize = (int) data_get($runtime, 'pool.size', 2);
         $browserPoolWarm = (int) data_get($runtime, 'pool.warm', 1);
@@ -78,6 +79,7 @@ final class CanioServeCommand extends Command
             '--request-logging='.($requestLogging ? 'true' : 'false'),
             '--user-data-dir', $userDataDir,
             '--headless='.($headless ? 'true' : 'false'),
+            '--no-sandbox='.($noSandbox ? 'true' : 'false'),
             '--ignore-https-errors='.($ignoreHttpsErrors ? 'true' : 'false'),
             '--browser-pool-size', (string) $browserPoolSize,
             '--browser-pool-warm', (string) $browserPoolWarm,

@@ -17,6 +17,7 @@ return [
             'path' => env('CANIO_CHROMIUM_PATH'),
             'channel' => env('CANIO_CHROMIUM_CHANNEL', 'stable'),
             'headless' => (bool) env('CANIO_CHROMIUM_HEADLESS', true),
+            'no_sandbox' => (bool) env('CANIO_CHROMIUM_NO_SANDBOX', false),
             'ignore_https_errors' => (bool) env('CANIO_CHROMIUM_IGNORE_HTTPS_ERRORS', true),
             'user_data_dir' => env('CANIO_CHROMIUM_USER_DATA_DIR'),
         ],

@@ -101,6 +101,13 @@ func allocatorOptions(cfg config.RuntimeConfig, id int) ([]chromedp.ExecAllocato
 		opts = append(opts, chromedp.Flag("headless", false))
 	}
 
+	if cfg.DisableSandbox {
+		opts = append(opts,
+			chromedp.Flag("no-sandbox", true),
+			chromedp.Flag("disable-setuid-sandbox", true),
+		)
+	}
+
 	if cfg.IgnoreHTTPSErrors {
 		opts = append(opts, chromedp.IgnoreCertErrors)
 	}
