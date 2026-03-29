@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,7 +29,7 @@ type App struct {
 	renderCount   int
 	activeRenders int
 	state         string
-	renderer      *browser.Renderer
+	renderer      renderEngine
 	store         *artifacts.Store
 	jobs          *jobs.Manager
 	telemetry     *observability.Runtime
@@ -37,6 +38,12 @@ type App struct {
 	eventStop     context.CancelFunc
 	eventWG       sync.WaitGroup
 	mu            sync.Mutex
+}
+
+type renderEngine interface {
+	Render(context.Context, contracts.RenderSpec) ([]byte, []string, *contracts.DebugArtifacts, map[string]int64, error)
+	Status() browser.PoolStatus
+	Close()
 }
 
 func New(cfg config.RuntimeConfig) *App {
@@ -287,7 +294,67 @@ func (a *App) executeRender(ctx context.Context, spec contracts.RenderSpec, repl
 	a.mu.Unlock()
 	defer a.finishRender()
 
-	pdfBytes, warnings, debugArtifacts, err := a.renderer.Render(ctx, spec)
+	cacheLookupStartedAt := time.Now()
+	cached, cacheErr := a.store.LoadRenderCache(spec)
+	if cacheErr != nil && !errors.Is(cacheErr, artifacts.ErrRenderCacheNotFound) {
+		return contracts.RenderResult{}, cacheErr
+	}
+
+	if cached != nil {
+		a.mu.Lock()
+		a.renderCount++
+		renderCount := a.renderCount
+		a.mu.Unlock()
+
+		timings := cloneTimings(cached.Timings)
+		if timings == nil {
+			timings = map[string]int64{}
+		}
+		timings["cacheLookupMs"] = time.Since(cacheLookupStartedAt).Milliseconds()
+
+		result = contracts.RenderResult{
+			ContractVersion: contracts.RenderResultContractVersion,
+			RequestID:       spec.RequestID,
+			JobID:           jobID(spec, renderCount),
+			Status:          "completed",
+			Warnings:        append([]string(nil), cached.Warnings...),
+			Timings:         timings,
+			PDF: contracts.RenderedPDF{
+				Base64:      base64.StdEncoding.EncodeToString(cached.PDFBytes),
+				ContentType: "application/pdf",
+				FileName:    resolveFileName(spec, renderCount),
+				Bytes:       len(cached.PDFBytes),
+			},
+		}
+
+		saveStartedAt := time.Now()
+		bundle, saveErr := a.store.Save(spec, result, cached.PDFBytes, cached.DebugArtifacts, replayOf)
+		if saveErr != nil {
+			return contracts.RenderResult{}, saveErr
+		}
+		result.Timings["artifactSaveMs"] = time.Since(saveStartedAt).Milliseconds()
+		result.Timings["totalMs"] = time.Since(start).Milliseconds()
+		result.Artifacts = bundle
+		success = true
+
+		artifactID := ""
+		if bundle != nil {
+			artifactID = bundle.ID
+		}
+
+		observability.Info("stagehand_render_cache_hit", map[string]any{
+			"request_id":  spec.RequestID,
+			"job_id":      result.JobID,
+			"profile":     spec.Profile,
+			"source":      spec.Source.Type,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"artifact_id": artifactID,
+		})
+
+		return result, nil
+	}
+
+	pdfBytes, warnings, debugArtifacts, timings, err := a.renderer.Render(ctx, spec)
 	if err != nil {
 		return contracts.RenderResult{}, err
 	}
@@ -298,15 +365,16 @@ func (a *App) executeRender(ctx context.Context, spec contracts.RenderSpec, repl
 	a.mu.Unlock()
 
 	fileName := resolveFileName(spec, renderCount)
+	if timings == nil {
+		timings = map[string]int64{}
+	}
 	result = contracts.RenderResult{
 		ContractVersion: contracts.RenderResultContractVersion,
 		RequestID:       spec.RequestID,
 		JobID:           jobID(spec, renderCount),
 		Status:          "completed",
 		Warnings:        warnings,
-		Timings: map[string]int64{
-			"totalMs": time.Since(start).Milliseconds(),
-		},
+		Timings:         timings,
 		PDF: contracts.RenderedPDF{
 			Base64:      base64.StdEncoding.EncodeToString(pdfBytes),
 			ContentType: "application/pdf",
@@ -315,9 +383,25 @@ func (a *App) executeRender(ctx context.Context, spec contracts.RenderSpec, repl
 		},
 	}
 
+	cacheTimings := cloneTimings(timings)
+
+	saveStartedAt := time.Now()
 	bundle, err := a.store.Save(spec, result, pdfBytes, debugArtifacts, replayOf)
 	if err != nil {
 		return contracts.RenderResult{}, err
+	}
+	result.Timings["artifactSaveMs"] = time.Since(saveStartedAt).Milliseconds()
+	result.Timings["totalMs"] = time.Since(start).Milliseconds()
+
+	cacheResult := result
+	cacheResult.Timings = cacheTimings
+
+	if cacheErr := a.store.SaveRenderCache(spec, cacheResult, pdfBytes, debugArtifacts); cacheErr != nil {
+		observability.Error("stagehand_render_cache_store_failed", cacheErr, map[string]any{
+			"request_id": spec.RequestID,
+			"profile":    spec.Profile,
+			"source":     spec.Source.Type,
+		})
 	}
 
 	result.Artifacts = bundle
@@ -400,6 +484,19 @@ func sanitizeFileName(value string) string {
 		return "document"
 	}
 	return value
+}
+
+func cloneTimings(timings map[string]int64) map[string]int64 {
+	if len(timings) == 0 {
+		return nil
+	}
+
+	cloned := make(map[string]int64, len(timings))
+	for key, value := range timings {
+		cloned[key] = value
+	}
+
+	return cloned
 }
 
 func (a *App) startEventWebhookForwarder() {

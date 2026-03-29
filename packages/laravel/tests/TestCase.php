@@ -22,6 +22,8 @@ abstract class TestCase extends Orchestra
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('a', 32)));
         $app['config']->set('app.url', 'https://canio.test');
         $app['config']->set('cache.default', 'array');
+        $app['config']->set('canio.cloud.mode', 'off');
+        $app['config']->set('canio.runtime.mode', 'remote');
         $app['config']->set('canio.ops.enabled', true);
         $app['config']->set('canio.ops.access.preset', 'local-open');
         $app['config']->set('filesystems.default', 'local');

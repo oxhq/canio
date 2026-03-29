@@ -21,11 +21,7 @@ if ((bool) config('canio.ops.enabled', false)) {
         ->name('canio.ops.')
         ->group(function (): void {
             Route::get('/', [OpsDashboardController::class, 'index'])->name('index');
-            Route::post('/runtime/restart', [OpsDashboardController::class, 'restartRuntime'])->name('runtime.restart');
             Route::get('/jobs/{job}', [OpsDashboardController::class, 'showJob'])->name('jobs.show');
-            Route::post('/jobs/{job}/cancel', [OpsDashboardController::class, 'cancelJob'])->name('jobs.cancel');
-            Route::post('/jobs/{job}/retry', [OpsDashboardController::class, 'retryJob'])->name('jobs.retry');
             Route::get('/artifacts/{artifact}', [OpsDashboardController::class, 'showArtifact'])->name('artifacts.show');
-            Route::post('/dead-letters/{deadLetter}/requeue', [OpsDashboardController::class, 'requeueDeadLetter'])->name('dead-letters.requeue');
         });
 }

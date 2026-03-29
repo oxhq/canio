@@ -4,12 +4,67 @@
 It keeps the public API Laravel-native while delegating execution to the bundled `Stagehand` runtime.
 For `view(...)` sources, Laravel renders Blade to HTML locally before the payload crosses into Stagehand.
 
+This package is optimized for browser-grade PDFs, not for the narrowest possible static HTML-to-PDF latency.
+If you need real browser layout, JavaScript execution, explicit readiness, and operator-grade debug artifacts, Canio is the target category.
+If you only need the quickest uncached render for a simple static document, smaller engines may still win on raw speed.
+
 ## Install
 
 ```bash
 composer require oxhq/canio
+```
+
+That is enough for the default experience. The package now runs in `embedded` mode by default, which means Canio will:
+
+- auto-install the matching `stagehand` binary on first use when it is missing
+- auto-start the local runtime the first time a facade call needs it
+- keep `php artisan canio:serve` as an advanced/self-hosted escape hatch, not as a prerequisite
+
+If you prefer to prewarm the binary during deployment instead of waiting for first use, you can still run:
+
+```bash
 php artisan canio:install
 ```
+
+If you want to customize runtime, ops, or cloud behavior, publish the package config:
+
+```bash
+php artisan vendor:publish --tag=canio-config
+```
+
+## When To Choose Canio
+
+Choose Canio when your Laravel app needs one or more of these:
+
+- browser-real rendering instead of HTML approximation
+- JavaScript that must run before the PDF is captured
+- an explicit readiness contract through `window.__CANIO_READY__`
+- persisted render artifacts for debugging
+- async render workloads with retries, dead-letters, replay, and operator tooling
+
+Do not choose Canio only because you want the smallest possible cold-render time for a static invoice.
+That is not the primary lane of the package.
+
+## How It Works
+
+1. `Canio::view(...)` renders Blade inside Laravel. `Canio::html(...)` and `Canio::url(...)` skip that step and provide the source directly.
+2. The package normalizes the request and sends it to the embedded or remote `Stagehand` runtime.
+3. `Stagehand` renders with Chromium, honors explicit readiness signals, and returns either the PDF bytes, a saved file, or an async job handle.
+
+## Benchmarks And Proof
+
+This repo carries reproducible benchmarks so the package story stays grounded.
+
+What those harnesses currently establish:
+
+- on the reference invoice fixture, Canio is the most faithful engine in the matrix
+- on that same fixture, Canio already beats Browsershot and Snappy in useful performance
+- on the JavaScript probe, only Canio and Browsershot execute the runtime badge correctly in this harness
+- Canio is materially faster than Browsershot on the warm path in that JavaScript-capable category
+- Dompdf and mPDF still remain faster on simple uncached static renders, which is expected
+
+Benchmark methodology lives in [benchmarks/README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/benchmarks/README.md).
+Developer commands and local validation workflows live in [docs/development.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/docs/development.md).
 
 ## Public API
 
@@ -74,7 +129,7 @@ Supported terminal operations in this scaffold:
 - `Canio::runtimeCleanup($jobsOlderThanDays = null, $artifactsOlderThanDays = null, $deadLettersOlderThanDays = null)`
 - `Canio::replay($artifactId)`
 
-The runtime config now also exposes `runtime.pool` and `runtime.jobs` sections in `config/canio.php` so Laravel can tune Stagehand browser/browser-worker concurrency and optionally switch async jobs to a Redis transport.
+The runtime config now also exposes `runtime.mode`, `runtime.auto_start`, `runtime.auto_install`, `runtime.startup_timeout`, plus `runtime.pool` and `runtime.jobs` sections in `config/canio.php` so Laravel can choose between embedded vs remote execution, tune Stagehand browser/browser-worker concurrency, and optionally switch async jobs to a Redis transport.
 
 When the runtime uses `runtime.jobs.backend = redis`, `->queue('redis', 'pdfs')` now routes into a named Redis stream derived from `runtime.jobs.redis.queue_key`. If the runtime is still on `memory`, Stagehand will reject explicit `redis` queue connections instead of silently downgrading them. The same config block also exposes `lease_timeout` and `heartbeat_interval` so Redis-backed jobs can survive worker crashes and be reclaimed safely by another `Stagehand`.
 
@@ -89,14 +144,77 @@ When the runtime uses `runtime.jobs.backend = redis`, `->queue('redis', 'pdfs')`
 
 Stagehand always exposes `/metrics`, so in a container or reverse-proxy deployment you can scrape runtime health, queue depth, and request/render counters without adding another process.
 
+## Runtime Modes
+
+Canio now has two runtime modes:
+
+- `embedded` (default): the package hides Stagehand behind the facade API and bootstraps it automatically on demand
+- `remote`: Laravel talks to an already-running Stagehand daemon at `runtime.base_url`
+
+Useful runtime keys:
+
+- `runtime.mode`
+- `runtime.auto_start`
+- `runtime.auto_install`
+- `runtime.startup_timeout`
+- `runtime.binary`
+- `runtime.install_path`
+- `runtime.base_url`
+
+Example overrides:
+
+```dotenv
+# default package experience
+CANIO_RUNTIME_MODE=embedded
+CANIO_RUNTIME_AUTO_START=true
+CANIO_RUNTIME_AUTO_INSTALL=true
+```
+
+```dotenv
+# advanced/self-hosted mode
+CANIO_RUNTIME_MODE=remote
+CANIO_RUNTIME_BASE_URL=http://127.0.0.1:9514
+```
+
+## Cloud Modes
+
+Canio also exposes a separate cloud seam without changing the facade API.
+
+- `off`: default OSS behavior; render through embedded or remote Stagehand only
+- `sync`: keep rendering locally, but publish job snapshots and artifacts to Canio Cloud
+- `managed`: send render and job execution to Canio Cloud instead of a local Stagehand runtime
+
+Useful config keys:
+
+- `cloud.mode`
+- `cloud.base_url`
+- `cloud.token`
+- `cloud.project`
+- `cloud.environment`
+- `cloud.timeout`
+- `cloud.sync.enabled`
+- `cloud.sync.include_artifacts`
+
+Example:
+
+```dotenv
+CANIO_CLOUD_MODE=sync
+CANIO_CLOUD_BASE_URL=http://127.0.0.1:9081
+CANIO_CLOUD_TOKEN=canio_xxx
+CANIO_CLOUD_PROJECT=prj_xxx
+CANIO_CLOUD_ENVIRONMENT=env_xxx
+```
+
+In `managed` mode, the package binds a cloud-backed `StagehandClient` and no longer requires a local Stagehand daemon.
+
 ## Ops Panel
 
-Canio also ships a minimal web panel for operators. It is enabled by default when `APP_ENV` is `local` or `testing`.
+Canio also ships a minimal web panel for operators, but it is now opt-in. The package core does not require the panel.
 
 - dashboard path defaults to `/canio/ops`
-- recent jobs, artifacts, and dead-letters are listed in one place
+- recent jobs and artifacts are listed in one place
 - job detail pages can auto-refresh while a job is still running
-- runtime actions include restart, cancel, retry, and dead-letter requeue
+- the web panel stays read-only; mutating actions remain in Artisan or move to Canio Cloud
 - access can be protected by authenticated Laravel users, HTTP Basic Auth, or a custom authorizer class
 
 Useful config keys in `config/canio.php`:
@@ -118,6 +236,7 @@ Useful config keys in `config/canio.php`:
 
 Related environment variables:
 
+- `CANIO_OPS_ENABLED`
 - `CANIO_OPS_PATH`
 - `CANIO_OPS_TITLE`
 - `CANIO_OPS_REFRESH_SECONDS`
@@ -165,9 +284,18 @@ CANIO_OPS_BASIC_PASSWORD=change-me
 CANIO_OPS_BASIC_REALM="Canio Ops"
 ```
 
+Enable the panel explicitly when you want the advanced operator layer:
+
+```dotenv
+CANIO_OPS_ENABLED=true
+CANIO_OPS_PRESET=laravel-auth
+CANIO_OPS_GUARDS=web
+CANIO_OPS_ABILITY=viewCanioOps
+```
+
 ## Job Push Events
 
-When `runtime.push.webhook.enabled` is `true`, `php artisan canio:serve` will point Stagehand at your app route and Laravel will verify incoming signatures automatically.
+When `runtime.push.webhook.enabled` is `true`, the daemon will point Stagehand at your app route and Laravel will verify incoming signatures automatically. In `embedded` mode this happens transparently; in `remote` mode you can still run `php artisan canio:serve` yourself.
 
 Dispatched Laravel events:
 
@@ -184,6 +312,7 @@ The default callback path is `POST /canio/webhooks/stagehand/jobs`, but you can 
 ```bash
 php artisan canio:install
 php artisan canio:doctor
+# advanced / remote mode
 php artisan canio:serve
 php artisan canio:runtime:install
 php artisan canio:runtime:status

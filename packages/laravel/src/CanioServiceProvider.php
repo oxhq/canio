@@ -6,7 +6,9 @@ namespace Oxhq\Canio;
 
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Support\ServiceProvider;
+use Oxhq\Canio\Bridge\CloudStagehandClient;
 use Oxhq\Canio\Bridge\HttpStagehandClient;
+use Oxhq\Canio\Contracts\CanioCloudSyncer;
 use Oxhq\Canio\Console\CanioDoctorCommand;
 use Oxhq\Canio\Console\CanioInstallCommand;
 use Oxhq\Canio\Console\CanioRuntimeArtifactCommand;
@@ -23,7 +25,17 @@ use Oxhq\Canio\Console\CanioRuntimeRetryCommand;
 use Oxhq\Canio\Console\CanioRuntimeStatusCommand;
 use Oxhq\Canio\Console\CanioServeCommand;
 use Oxhq\Canio\Contracts\StagehandClient;
+use Oxhq\Canio\Contracts\StagehandRuntimeBootstrapper;
+use Oxhq\Canio\Support\CanioCloudRequestor;
+use Oxhq\Canio\Support\EmbeddedStagehandRuntimeBootstrapper;
+use Oxhq\Canio\Support\HttpCanioCloudSyncer;
+use Oxhq\Canio\Support\NullStagehandRuntimeBootstrapper;
+use Oxhq\Canio\Support\NullCanioCloudSyncer;
 use Oxhq\Canio\Support\StagehandBinaryResolver;
+use Oxhq\Canio\Support\StagehandHealthProbe;
+use Oxhq\Canio\Support\StagehandProcessLauncher;
+use Oxhq\Canio\Support\StagehandReleaseInstaller;
+use Oxhq\Canio\Support\StagehandServeCommandBuilder;
 
 final class CanioServiceProvider extends ServiceProvider
 {
@@ -32,12 +44,69 @@ final class CanioServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/canio.php', 'canio');
 
         $this->app->singleton(StagehandBinaryResolver::class);
+        $this->app->singleton(StagehandReleaseInstaller::class);
+        $this->app->singleton(StagehandServeCommandBuilder::class);
+        $this->app->singleton(StagehandProcessLauncher::class);
+        $this->app->singleton(StagehandHealthProbe::class);
+        $this->app->singleton(CanioCloudRequestor::class, function ($app): CanioCloudRequestor {
+            return new CanioCloudRequestor((array) $app['config']->get('canio.cloud', []));
+        });
+        $this->app->singleton(StagehandRuntimeBootstrapper::class, function ($app): StagehandRuntimeBootstrapper {
+            $cloud = (array) $app['config']->get('canio.cloud', []);
+            $cloudMode = strtolower(trim((string) ($cloud['mode'] ?? 'off')));
+
+            if ($cloudMode === 'managed') {
+                return new NullStagehandRuntimeBootstrapper;
+            }
+
+            $runtime = (array) $app['config']->get('canio.runtime', []);
+            $mode = strtolower(trim((string) ($runtime['mode'] ?? 'embedded')));
+
+            if ($mode !== 'embedded') {
+                return new NullStagehandRuntimeBootstrapper;
+            }
+
+            return new EmbeddedStagehandRuntimeBootstrapper(
+                config: $runtime,
+                resolver: $app->make(StagehandBinaryResolver::class),
+                installer: $app->make(StagehandReleaseInstaller::class),
+                commandBuilder: $app->make(StagehandServeCommandBuilder::class),
+                launcher: $app->make(StagehandProcessLauncher::class),
+                healthProbe: $app->make(StagehandHealthProbe::class),
+            );
+        });
+        $this->app->singleton(CanioCloudSyncer::class, function ($app): CanioCloudSyncer {
+            $cloud = (array) $app['config']->get('canio.cloud', []);
+            $mode = strtolower(trim((string) ($cloud['mode'] ?? 'off')));
+
+            if ($mode !== 'sync' || ! (bool) data_get($cloud, 'sync.enabled', true)) {
+                return new NullCanioCloudSyncer;
+            }
+
+            return new HttpCanioCloudSyncer(
+                requestor: $app->make(CanioCloudRequestor::class),
+                config: $cloud,
+            );
+        });
         $this->app->singleton(StagehandClient::class, function ($app): StagehandClient {
-            return new HttpStagehandClient((array) $app['config']->get('canio.runtime', []));
+            $cloud = (array) $app['config']->get('canio.cloud', []);
+            $mode = strtolower(trim((string) ($cloud['mode'] ?? 'off')));
+
+            if ($mode === 'managed') {
+                return new CloudStagehandClient(
+                    requestor: $app->make(CanioCloudRequestor::class),
+                );
+            }
+
+            return new HttpStagehandClient(
+                config: (array) $app['config']->get('canio.runtime', []),
+                bootstrapper: $app->make(StagehandRuntimeBootstrapper::class),
+            );
         });
         $this->app->singleton('canio', function ($app): CanioManager {
             return new CanioManager(
                 stagehand: $app->make(StagehandClient::class),
+                cloudSyncer: $app->make(CanioCloudSyncer::class),
                 filesystems: $app['filesystem'],
                 views: $app->make(ViewFactory::class),
                 config: (array) $app['config']->get('canio', []),

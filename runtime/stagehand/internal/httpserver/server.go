@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -90,7 +91,7 @@ func New(app *appruntime.App) http.Handler {
 
 		spec, err := contracts.DecodeRenderSpec(r.Body)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "invalid render spec JSON"})
+			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: fmt.Sprintf("invalid render spec JSON: %v", err)})
 			return
 		}
 
@@ -110,7 +111,7 @@ func New(app *appruntime.App) http.Handler {
 		case http.MethodPost:
 			spec, err := contracts.DecodeRenderSpec(r.Body)
 			if err != nil {
-				writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "invalid render spec JSON"})
+				writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: fmt.Sprintf("invalid render spec JSON: %v", err)})
 				return
 			}
 

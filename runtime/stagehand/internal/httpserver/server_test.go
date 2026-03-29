@@ -46,3 +46,27 @@ func TestMetricsEndpointExposesPrometheusPayload(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderEndpointReturnsDecodeDetailsForInvalidJSON(t *testing.T) {
+	app := appruntime.New(config.Default())
+	defer app.Close()
+
+	handler := New(app)
+	request := httptest.NewRequest(http.MethodPost, "/v1/renders", strings.NewReader(`{"postprocess":[]}`))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected renders endpoint to return 400, got %d", response.Code)
+	}
+
+	body := response.Body.String()
+	if !strings.Contains(body, "invalid render spec JSON") {
+		t.Fatalf("expected invalid render spec message, got %s", body)
+	}
+
+	if !strings.Contains(body, "cannot unmarshal array into Go struct field") {
+		t.Fatalf("expected decode detail in response, got %s", body)
+	}
+}

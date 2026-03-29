@@ -1,6 +1,6 @@
 @extends('canio::ops.layout', [
     'title' => $opsTitle,
-    'subtitle' => 'Job detail with runtime-facing actions and artifact linkage.',
+    'subtitle' => 'Job detail with the latest durable snapshot and artifact linkage.',
 ])
 
 @section('meta')
@@ -63,32 +63,20 @@
             <section class="panel">
                 <div class="section-head">
                     <div>
-                        <h2>Actions</h2>
-                        <p>Runtime-safe controls for this job.</p>
+                        <h2>Operator Note</h2>
+                        <p>The local OSS panel is read-only by design.</p>
                     </div>
                 </div>
                 <div class="section-body stack">
-                    <div class="actions">
-                        @if (! $job->terminal())
-                            <form method="post" action="{{ route('canio.ops.jobs.cancel', ['job' => $job->id()]) }}">
-                                @csrf
-                                <button class="danger" type="submit">Cancel Job</button>
-                            </form>
-                        @endif
-                        @if ($job->failed() && $job->deadLetterId())
-                            <form method="post" action="{{ route('canio.ops.jobs.retry', ['job' => $job->id()]) }}">
-                                @csrf
-                                <button class="warning" type="submit">Retry From Dead-Letter</button>
-                            </form>
-                        @endif
-                        @if ($job->artifactId())
+                    @if ($job->artifactId())
+                        <div class="actions">
                             <a class="button secondary" href="{{ route('canio.ops.artifacts.show', ['artifact' => $job->artifactId()]) }}">Open Artifact</a>
-                        @endif
-                    </div>
+                        </div>
+                    @endif
 
                     <div class="empty">
                         <strong class="mono">Tip</strong><br>
-                        Use the Artisan watcher when you want the raw lifecycle stream line-by-line. This panel focuses on the latest durable snapshot.
+                        Use Artisan for local runtime actions and lifecycle inspection. Hosted retry, retention, and collaboration move to Canio Cloud.
                     </div>
                 </div>
             </section>

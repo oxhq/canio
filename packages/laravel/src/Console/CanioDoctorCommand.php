@@ -20,6 +20,9 @@ final class CanioDoctorCommand extends Command
         $runtime = (array) config('canio.runtime', []);
         $workingDirectory = (string) ($runtime['working_directory'] ?? base_path());
         $binaryOkay = false;
+        $mode = strtolower(trim((string) ($runtime['mode'] ?? 'embedded')));
+
+        $this->info(sprintf('Runtime mode: %s', $mode));
 
         try {
             $binary = $resolver->resolve($runtime, $workingDirectory);
@@ -45,7 +48,11 @@ final class CanioDoctorCommand extends Command
                 (string) data_get($status, 'version', 'unknown'),
             ));
         } catch (RuntimeException $exception) {
-            $this->warn($exception->getMessage());
+            if ($mode === 'embedded' && (bool) ($runtime['auto_start'] ?? true)) {
+                $this->warn('Embedded Stagehand is not running yet. It will be started automatically on first use.');
+            } else {
+                $this->warn($exception->getMessage());
+            }
         }
 
         return $binaryOkay ? self::SUCCESS : self::FAILURE;

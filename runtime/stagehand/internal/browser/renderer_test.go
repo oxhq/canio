@@ -19,7 +19,7 @@ func TestRendererRendersHTMLWithCDP(t *testing.T) {
 	renderer := New(testRuntimeConfig())
 	defer renderer.Close()
 
-	pdfBytes, warnings, debugArtifacts, err := renderer.Render(context.Background(), contracts.RenderSpec{
+	pdfBytes, warnings, debugArtifacts, _, err := renderer.Render(context.Background(), contracts.RenderSpec{
 		ContractVersion: contracts.RenderSpecContractVersion,
 		RequestID:       "renderer-req-1",
 		Source: contracts.RenderSource{
@@ -50,6 +50,42 @@ func TestRendererRendersHTMLWithCDP(t *testing.T) {
 
 	if debugArtifacts != nil {
 		t.Fatalf("expected debug artifacts to be nil when debug mode is disabled")
+	}
+}
+
+func TestResolveHTMLBootstrapURLUsesAboutBlankForNormalizedViews(t *testing.T) {
+	spec := contracts.RenderSpec{
+		Source: contracts.RenderSource{
+			Type: "html",
+			Payload: map[string]any{
+				"html":    "<html><body>Invoice</body></html>",
+				"baseUrl": "http://127.0.0.1:8000",
+				"origin": map[string]any{
+					"type": "view",
+					"view": "pdf.invoice",
+				},
+			},
+		},
+	}
+
+	if got := resolveHTMLBootstrapURL(spec); got != "about:blank" {
+		t.Fatalf("expected normalized Blade views to bootstrap from about:blank, got %q", got)
+	}
+}
+
+func TestResolveHTMLBootstrapURLKeepsBaseURLForRawHTMLSources(t *testing.T) {
+	spec := contracts.RenderSpec{
+		Source: contracts.RenderSource{
+			Type: "html",
+			Payload: map[string]any{
+				"html":    "<html><body>Invoice</body></html>",
+				"baseUrl": "https://canio.test",
+			},
+		},
+	}
+
+	if got := resolveHTMLBootstrapURL(spec); got != "https://canio.test" {
+		t.Fatalf("expected raw HTML sources to keep their base URL bootstrap, got %q", got)
 	}
 }
 

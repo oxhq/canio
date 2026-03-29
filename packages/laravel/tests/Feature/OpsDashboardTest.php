@@ -7,6 +7,7 @@ use Oxhq\Canio\Contracts\StagehandClient;
 use Oxhq\Canio\Data\RenderJob;
 use Oxhq\Canio\Data\RenderResult;
 use Oxhq\Canio\Data\RenderSpec;
+use Illuminate\Support\Facades\Route;
 
 it('renders the ops dashboard and detail pages', function () {
     $fake = new OpsDashboardFakeClient(
@@ -67,17 +68,7 @@ it('renders the ops dashboard and detail pages', function () {
                 'metadata' => '/tmp/canio/artifacts/art-ops-1/metadata.json',
             ],
         ]],
-        deadLetters: [[
-            'id' => 'dlq-job-ops-1',
-            'jobId' => 'job-ops-0',
-            'requestId' => 'req-dead-1',
-            'failedAt' => now()->subMinute()->toIso8601String(),
-            'error' => 'broken upstream',
-            'directory' => '/tmp/canio/deadletters/job-ops-0',
-            'files' => [
-                'job' => '/tmp/canio/deadletters/job-ops-0/job.json',
-            ],
-        ]],
+        deadLetters: [],
     );
 
     swapOpsClient($fake);
@@ -87,7 +78,8 @@ it('renders the ops dashboard and detail pages', function () {
         ->assertSee('Canio Ops')
         ->assertSee('job-ops-1')
         ->assertSee('art-ops-1')
-        ->assertSee('dlq-job-ops-1');
+        ->assertSee('Local Ops Boundary')
+        ->assertDontSee('dlq-job-ops-1');
 
     $this->get(route('canio.ops.jobs.show', ['job' => 'job-ops-1']))
         ->assertOk()
@@ -102,71 +94,11 @@ it('renders the ops dashboard and detail pages', function () {
         ->assertSee('/tmp/canio/artifacts/art-ops-1');
 });
 
-it('executes ops actions through web routes', function () {
-    $fake = new OpsDashboardFakeClient(
-        status: [
-            'contractVersion' => 'canio.stagehand.runtime-status.v1',
-            'runtime' => ['state' => 'ready'],
-        ],
-        jobs: [
-            [
-                'contractVersion' => 'canio.stagehand.job.v1',
-                'id' => 'job-running-1',
-                'requestId' => 'req-running-1',
-                'status' => 'running',
-                'attempts' => 1,
-                'submittedAt' => now()->subSeconds(20)->toIso8601String(),
-            ],
-            [
-                'contractVersion' => 'canio.stagehand.job.v1',
-                'id' => 'job-failed-1',
-                'requestId' => 'req-failed-1',
-                'status' => 'failed',
-                'attempts' => 1,
-                'submittedAt' => now()->subMinute()->toIso8601String(),
-                'completedAt' => now()->subSeconds(10)->toIso8601String(),
-                'deadLetter' => [
-                    'id' => 'dlq-job-failed-1',
-                    'directory' => '/tmp/canio/deadletters/job-failed-1',
-                    'files' => [
-                        'job' => '/tmp/canio/deadletters/job-failed-1/job.json',
-                    ],
-                ],
-            ],
-        ],
-        artifacts: [],
-        deadLetters: [[
-            'id' => 'dlq-job-failed-1',
-            'jobId' => 'job-failed-1',
-            'requestId' => 'req-failed-1',
-            'failedAt' => now()->subSeconds(10)->toIso8601String(),
-            'error' => 'permanent failure',
-            'directory' => '/tmp/canio/deadletters/job-failed-1',
-            'files' => [
-                'job' => '/tmp/canio/deadletters/job-failed-1/job.json',
-            ],
-        ]],
-    );
-
-    swapOpsClient($fake);
-
-    $this->post(route('canio.ops.jobs.cancel', ['job' => 'job-running-1']), [
-        'redirect_to' => 'dashboard',
-    ])->assertRedirect(route('canio.ops.index'));
-
-    $this->post(route('canio.ops.jobs.retry', ['job' => 'job-failed-1']))
-        ->assertRedirect(route('canio.ops.jobs.show', ['job' => 'job-retried-1']));
-
-    $this->post(route('canio.ops.dead-letters.requeue', ['deadLetter' => 'dlq-job-failed-1']))
-        ->assertRedirect(route('canio.ops.jobs.show', ['job' => 'job-requeued-1']));
-
-    $this->post(route('canio.ops.runtime.restart'))
-        ->assertRedirect(route('canio.ops.index'));
-
-    expect($fake->cancelledJobs)->toBe(['job-running-1'])
-        ->and($fake->retriedJobs)->toBe(['job-failed-1'])
-        ->and($fake->requeuedDeadLetters)->toBe(['dlq-job-failed-1', 'dlq-job-failed-1'])
-        ->and($fake->restartCount)->toBe(1);
+it('keeps the local ops panel read-only', function () {
+    expect(Route::has('canio.ops.jobs.cancel'))->toBeFalse()
+        ->and(Route::has('canio.ops.jobs.retry'))->toBeFalse()
+        ->and(Route::has('canio.ops.dead-letters.requeue'))->toBeFalse()
+        ->and(Route::has('canio.ops.runtime.restart'))->toBeFalse();
 });
 
 function swapOpsClient(StagehandClient $client): void

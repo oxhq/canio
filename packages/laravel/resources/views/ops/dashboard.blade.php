@@ -1,14 +1,7 @@
 @extends('canio::ops.layout', [
     'title' => $opsTitle,
-    'subtitle' => 'Recent jobs, artifacts, dead-letters, and runtime pressure in one place.',
+    'subtitle' => 'Recent jobs, artifacts, and runtime pressure in one place.',
 ])
-
-@section('hero_actions')
-    <form method="post" action="{{ route('canio.ops.runtime.restart') }}">
-        @csrf
-        <button class="secondary" type="submit">Restart Runtime</button>
-    </form>
-@endsection
 
 @section('content')
     @if ($status)
@@ -51,7 +44,6 @@
                             <th>Status</th>
                             <th>Submitted</th>
                             <th>Artifact</th>
-                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -75,24 +67,6 @@
                                     @else
                                         —
                                     @endif
-                                </td>
-                                <td>
-                                    <div class="actions">
-                                        <a class="button ghost" href="{{ route('canio.ops.jobs.show', ['job' => $job->id()]) }}">Open</a>
-                                        @if (! $job->terminal())
-                                            <form method="post" action="{{ route('canio.ops.jobs.cancel', ['job' => $job->id()]) }}">
-                                                @csrf
-                                                <input type="hidden" name="redirect_to" value="dashboard">
-                                                <button class="danger" type="submit">Cancel</button>
-                                            </form>
-                                        @endif
-                                        @if ($job->failed() && $job->deadLetterId())
-                                            <form method="post" action="{{ route('canio.ops.jobs.retry', ['job' => $job->id()]) }}">
-                                                @csrf
-                                                <button class="warning" type="submit">Retry</button>
-                                            </form>
-                                        @endif
-                                    </div>
                                 </td>
                             </tr>
                         @endforeach
@@ -151,40 +125,15 @@
         <section class="panel">
             <div class="section-head">
                 <div>
-                    <h2>Dead-Letters</h2>
-                    <p>Archived failures that can be requeued from the UI.</p>
+                    <h2>Local Ops Boundary</h2>
+                    <p>This panel stays read-only. Use Artisan for local runtime actions, or Canio Cloud for the hosted control plane.</p>
                 </div>
             </div>
-            <div class="section-body table-wrap">
-                @if ($deadLetters === [])
-                    <div class="empty">No dead-letters right now.</div>
-                @else
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Dead-Letter</th>
-                                <th>Failed At</th>
-                                <th>Error</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($deadLetters as $deadLetter)
-                                <tr>
-                                    <td class="mono">{{ data_get($deadLetter, 'id', '—') }}</td>
-                                    <td class="mono">{{ data_get($deadLetter, 'failedAt', '—') }}</td>
-                                    <td>{{ data_get($deadLetter, 'error', '—') }}</td>
-                                    <td>
-                                        <form method="post" action="{{ route('canio.ops.dead-letters.requeue', ['deadLetter' => data_get($deadLetter, 'id')]) }}">
-                                            @csrf
-                                            <button class="warning" type="submit">Requeue</button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                @endif
+            <div class="section-body">
+                <div class="empty">
+                    <strong class="mono">Heads up</strong><br>
+                    The OSS package still owns rendering and local debugging. Collaboration, longer retention, hosted links, and managed runtime belong in Canio Cloud.
+                </div>
             </div>
         </section>
     </div>

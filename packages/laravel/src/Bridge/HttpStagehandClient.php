@@ -6,13 +6,17 @@ namespace Oxhq\Canio\Bridge;
 
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use JsonException;
 use Oxhq\Canio\Contracts\StagehandClient;
+use Oxhq\Canio\Contracts\StagehandRuntimeBootstrapper;
 use Oxhq\Canio\Data\RenderJob;
 use Oxhq\Canio\Data\RenderResult;
 use Oxhq\Canio\Data\RenderSpec;
 use Oxhq\Canio\Support\RequestSigner;
 use Oxhq\Canio\Support\SseDecoder;
+use Oxhq\Canio\Support\NullStagehandRuntimeBootstrapper;
 use RuntimeException;
+use stdClass;
 
 final class HttpStagehandClient implements StagehandClient
 {
@@ -21,6 +25,7 @@ final class HttpStagehandClient implements StagehandClient
      */
     public function __construct(
         private readonly array $config,
+        ?StagehandRuntimeBootstrapper $bootstrapper = null,
     ) {
         $rootAuth = is_array($this->config['auth'] ?? null) ? $this->config['auth'] : [];
         $legacyAuth = data_get($this->config, 'jobs.auth', []);
@@ -33,11 +38,14 @@ final class HttpStagehandClient implements StagehandClient
 
         $this->signer = new RequestSigner($resolvedAuth);
         $this->decoder = new SseDecoder;
+        $this->bootstrapper = $bootstrapper ?? new NullStagehandRuntimeBootstrapper;
     }
 
     private RequestSigner $signer;
 
     private SseDecoder $decoder;
+
+    private StagehandRuntimeBootstrapper $bootstrapper;
 
     public function render(RenderSpec $spec): RenderResult
     {
@@ -165,7 +173,9 @@ final class HttpStagehandClient implements StagehandClient
      */
     private function request(string $method, string $path, array $payload = [], array $query = []): array
     {
-        $body = $method === 'get' ? '' : (string) json_encode($payload);
+        $this->bootstrapper->ensureAvailable();
+
+        $body = $method === 'get' ? '' : $this->encodePayload($payload);
 
         try {
             $pendingRequest = Http::baseUrl($this->baseUrl())
@@ -175,12 +185,11 @@ final class HttpStagehandClient implements StagehandClient
 
             $response = $method === 'get'
                 ? $pendingRequest->get($path, $query)
-                : $pendingRequest->post($path, $payload);
+                : $pendingRequest
+                    ->withBody($body, 'application/json')
+                    ->send(strtoupper($method), $path, ['query' => $query]);
         } catch (ConnectionException $exception) {
-            throw new RuntimeException(sprintf(
-                'Unable to reach Stagehand at %s. Start it with `php artisan canio:serve` or update canio.runtime.base_url.',
-                $this->baseUrl(),
-            ), previous: $exception);
+            throw new RuntimeException($this->runtimeUnavailableMessage(), previous: $exception);
         }
 
         if ($response->failed()) {
@@ -228,11 +237,77 @@ final class HttpStagehandClient implements StagehandClient
         return $this->signer->headers($method, $path, $body);
     }
 
+    private function encodePayload(array $payload): string
+    {
+        try {
+            return json_encode(
+                $this->normalizePayloadForJson($payload),
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+            );
+        } catch (JsonException $exception) {
+            throw new RuntimeException('Unable to JSON encode the Stagehand request payload.', previous: $exception);
+        }
+    }
+
+    private function normalizePayloadForJson(array $payload): mixed
+    {
+        return $this->normalizeValueForJson($payload, '');
+    }
+
+    private function normalizeValueForJson(mixed $value, string $path): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if ($value === []) {
+            return $this->payloadPathExpectsObject($path) ? new stdClass : [];
+        }
+
+        if (array_is_list($value)) {
+            return array_map(
+                fn (mixed $item): mixed => $this->normalizeValueForJson($item, $path),
+                $value,
+            );
+        }
+
+        $normalized = [];
+
+        foreach ($value as $key => $item) {
+            $childPath = $path === '' ? (string) $key : $path.'.'.$key;
+            $normalized[$key] = $this->normalizeValueForJson($item, $childPath);
+        }
+
+        return $normalized;
+    }
+
+    private function payloadPathExpectsObject(string $path): bool
+    {
+        return in_array($path, [
+            '',
+            'source',
+            'source.payload',
+            'source.payload.origin',
+            'presentation',
+            'document',
+            'document.meta',
+            'execution',
+            'postprocess',
+            'postprocess.encrypt',
+            'debug',
+            'queue',
+            'output',
+            'correlation',
+        ], true);
+    }
+
     /**
      * @return resource
      */
     private function openStream(string $path, string $query = '')
     {
+        $this->bootstrapper->ensureAvailable();
+
         $url = $this->baseUrl().$path.$query;
         $headers = array_merge(
             ['Accept' => 'text/event-stream'],
@@ -251,10 +326,7 @@ final class HttpStagehandClient implements StagehandClient
         $stream = @fopen($url, 'r', false, $context);
 
         if (! is_resource($stream)) {
-            throw new RuntimeException(sprintf(
-                'Unable to reach Stagehand at %s. Start it with `php artisan canio:serve` or update canio.runtime.base_url.',
-                $this->baseUrl(),
-            ));
+            throw new RuntimeException($this->runtimeUnavailableMessage());
         }
 
         $responseHeaders = is_array($http_response_header ?? null) ? $http_response_header : [];
@@ -273,6 +345,24 @@ final class HttpStagehandClient implements StagehandClient
         }
 
         return $stream;
+    }
+
+    private function runtimeUnavailableMessage(): string
+    {
+        $mode = strtolower(trim((string) ($this->config['mode'] ?? 'embedded')));
+
+        if ($mode === 'embedded') {
+            return sprintf(
+                'Unable to reach the embedded Stagehand runtime at %s. Canio tried to start it automatically. Check canio.runtime.binary, canio.runtime.install_path, or %s.',
+                $this->baseUrl(),
+                (string) ($this->config['log_path'] ?? storage_path('logs/canio-runtime.log')),
+            );
+        }
+
+        return sprintf(
+            'Unable to reach Stagehand at %s. Start it with `php artisan canio:serve` or update canio.runtime.base_url.',
+            $this->baseUrl(),
+        );
     }
 
     /**

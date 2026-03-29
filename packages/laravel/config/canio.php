@@ -3,12 +3,29 @@
 declare(strict_types=1);
 
 return [
+    'cloud' => [
+        'mode' => env('CANIO_CLOUD_MODE', 'off'),
+        'base_url' => env('CANIO_CLOUD_BASE_URL'),
+        'token' => env('CANIO_CLOUD_TOKEN'),
+        'project' => env('CANIO_CLOUD_PROJECT'),
+        'environment' => env('CANIO_CLOUD_ENVIRONMENT'),
+        'timeout' => (int) env('CANIO_CLOUD_TIMEOUT', 30),
+        'sync' => [
+            'enabled' => (bool) env('CANIO_CLOUD_SYNC_ENABLED', true),
+            'include_artifacts' => (bool) env('CANIO_CLOUD_SYNC_INCLUDE_ARTIFACTS', true),
+        ],
+    ],
+
     'runtime' => [
+        'mode' => env('CANIO_RUNTIME_MODE', 'embedded'),
         'binary' => env('CANIO_RUNTIME_BINARY', 'stagehand'),
         'install_path' => env('CANIO_RUNTIME_INSTALL_PATH', 'bin/stagehand'),
         'working_directory' => env('CANIO_RUNTIME_WORKING_DIRECTORY', base_path()),
         'base_url' => env('CANIO_RUNTIME_BASE_URL', 'http://127.0.0.1:9514'),
         'timeout' => (int) env('CANIO_RUNTIME_TIMEOUT', 30),
+        'auto_start' => (bool) env('CANIO_RUNTIME_AUTO_START', true),
+        'auto_install' => (bool) env('CANIO_RUNTIME_AUTO_INSTALL', true),
+        'startup_timeout' => (int) env('CANIO_RUNTIME_STARTUP_TIMEOUT', 15),
         'host' => env('CANIO_RUNTIME_HOST', '127.0.0.1'),
         'port' => (int) env('CANIO_RUNTIME_PORT', 9514),
         'state_path' => env('CANIO_RUNTIME_STATE_PATH', storage_path('app/canio/runtime')),
@@ -26,6 +43,10 @@ return [
             'warm' => (int) env('CANIO_RUNTIME_BROWSER_POOL_WARM', 1),
             'queue_depth' => (int) env('CANIO_RUNTIME_BROWSER_QUEUE_DEPTH', 16),
             'acquire_timeout' => (int) env('CANIO_RUNTIME_BROWSER_ACQUIRE_TIMEOUT', 15),
+        ],
+        'wait' => [
+            'poll_interval_ms' => (int) env('CANIO_RUNTIME_READY_POLL_INTERVAL_MS', 50),
+            'settle_frames' => (int) env('CANIO_RUNTIME_READY_SETTLE_FRAMES', 2),
         ],
         'jobs' => [
             'backend' => env('CANIO_RUNTIME_JOB_BACKEND', 'memory'),
@@ -84,7 +105,7 @@ return [
     ],
 
     'ops' => [
-        'enabled' => env('CANIO_OPS_ENABLED', in_array((string) env('APP_ENV', 'production'), ['local', 'testing'], true)),
+        'enabled' => env('CANIO_OPS_ENABLED', false),
         'path' => env('CANIO_OPS_PATH', '/canio/ops'),
         'title' => env('CANIO_OPS_TITLE', 'Canio Ops'),
         'refresh_seconds' => (int) env('CANIO_OPS_REFRESH_SECONDS', 3),

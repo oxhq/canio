@@ -7,6 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/chromedp/cdproto/emulation"
+	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
+	cdpruntime "github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/oxhq/canio/runtime/stagehand/internal/config"
 )
@@ -36,7 +40,13 @@ func (f processFactory) Start(ctx context.Context, id int) (BrowserProcess, erro
 	allocatorCtx, allocatorEnd := chromedp.NewExecAllocator(context.Background(), opts...)
 	browserCtx, browserEnd := chromedp.NewContext(allocatorCtx)
 
-	if err := chromedp.Run(browserCtx); err != nil {
+	if err := chromedp.Run(browserCtx,
+		network.Enable(),
+		page.Enable(),
+		cdpruntime.Enable(),
+		emulation.SetEmulatedMedia().WithMedia("print"),
+		chromedp.Navigate("about:blank"),
+	); err != nil {
 		browserEnd()
 		allocatorEnd()
 		return nil, err

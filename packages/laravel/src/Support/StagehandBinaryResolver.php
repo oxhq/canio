@@ -15,6 +15,7 @@ final class StagehandBinaryResolver
     public function resolve(array $config, string $workingDirectory): string
     {
         $configured = trim((string) ($config['binary'] ?? 'stagehand'));
+        $installPath = trim((string) ($config['install_path'] ?? ''));
 
         if ($configured === '') {
             throw new RuntimeException(
@@ -36,12 +37,24 @@ final class StagehandBinaryResolver
             ));
         }
 
-        $finder = new ExecutableFinder;
-        $found = $finder->find($configured, null, [
+        $searchPaths = [
             $workingDirectory,
             $workingDirectory.DIRECTORY_SEPARATOR.'bin',
             $workingDirectory.DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR.'bin',
-        ]);
+        ];
+
+        if ($installPath !== '') {
+            $installedBinary = $this->normalizePath($installPath, $workingDirectory);
+
+            if (is_file($installedBinary) && is_executable($installedBinary)) {
+                return $installedBinary;
+            }
+
+            $searchPaths[] = dirname($installedBinary);
+        }
+
+        $finder = new ExecutableFinder;
+        $found = $finder->find($configured, null, array_values(array_unique($searchPaths)));
 
         if ($found !== null) {
             return $found;

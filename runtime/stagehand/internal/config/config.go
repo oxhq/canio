@@ -18,6 +18,8 @@ type RuntimeConfig struct {
 	BrowserPoolWarm     int
 	BrowserQueueDepth   int
 	AcquireTimeoutSec   int
+	ReadyPollIntervalMs int
+	ReadySettleFrames   int
 	JobBackend          string
 	JobWorkerCount      int
 	JobQueueDepth       int
@@ -54,6 +56,8 @@ func Default() RuntimeConfig {
 		BrowserPoolWarm:     1,
 		BrowserQueueDepth:   16,
 		AcquireTimeoutSec:   15,
+		ReadyPollIntervalMs: 50,
+		ReadySettleFrames:   2,
 		JobBackend:          "memory",
 		JobWorkerCount:      2,
 		JobQueueDepth:       64,

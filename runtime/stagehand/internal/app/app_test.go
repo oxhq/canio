@@ -9,8 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oxhq/canio/runtime/stagehand/internal/artifacts"
+	"github.com/oxhq/canio/runtime/stagehand/internal/browser"
 	"github.com/oxhq/canio/runtime/stagehand/internal/config"
 	"github.com/oxhq/canio/runtime/stagehand/internal/contracts"
+	"github.com/oxhq/canio/runtime/stagehand/internal/observability"
 )
 
 func TestRenderReturnsInlinePDFPayload(t *testing.T) {
@@ -133,6 +136,101 @@ func TestDebugRenderStoresArtifactsAndReplayWorks(t *testing.T) {
 	}
 }
 
+func TestRenderReusesExactRenderCacheWithoutCallingRendererAgain(t *testing.T) {
+	store := artifacts.New(t.TempDir())
+	renderer := &fakeRenderer{
+		pdf: []byte("%PDF-1.4\ncached"),
+		warnings: []string{
+			"font fallback",
+		},
+		timings: map[string]int64{
+			"renderMs": 77,
+		},
+		debugArtifacts: &contracts.DebugArtifacts{
+			ScreenshotPNG: []byte("png"),
+			DOMSnapshot:   "<html><body>cached</body></html>",
+			Console: []contracts.ConsoleEvent{
+				{Type: "log", Message: "cached"},
+			},
+			Network: []contracts.NetworkEvent{
+				{Stage: "response", RequestID: "req-1", Status: 200},
+			},
+		},
+	}
+
+	runtime := &App{
+		config:    config.Default(),
+		startedAt: time.Now().UTC(),
+		state:     "ready",
+		renderer:  renderer,
+		store:     store,
+		telemetry: observability.NewRuntime(time.Now().UTC()),
+	}
+
+	spec := contracts.RenderSpec{
+		ContractVersion: contracts.RenderSpecContractVersion,
+		RequestID:       "req-cache-a",
+		Source: contracts.RenderSource{
+			Type: "html",
+			Payload: map[string]any{
+				"html": "<!doctype html><html><body><h1>Cached</h1></body></html>",
+			},
+		},
+		Profile: "invoice",
+		Debug: map[string]any{
+			"enabled": true,
+		},
+		Output: map[string]any{
+			"fileName": "cached.pdf",
+		},
+	}
+
+	first, err := runtime.Render(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("first Render returned error: %v", err)
+	}
+
+	if renderer.calls != 1 {
+		t.Fatalf("renderer.calls after first render = %d, want 1", renderer.calls)
+	}
+
+	if first.Artifacts == nil || first.Artifacts.ID == "" {
+		t.Fatalf("expected first render to persist artifacts, got %#v", first.Artifacts)
+	}
+
+	secondSpec := spec
+	secondSpec.RequestID = "req-cache-b"
+
+	second, err := runtime.Render(context.Background(), secondSpec)
+	if err != nil {
+		t.Fatalf("second Render returned error: %v", err)
+	}
+
+	if renderer.calls != 1 {
+		t.Fatalf("renderer.calls after cache hit = %d, want 1", renderer.calls)
+	}
+
+	if second.RequestID != secondSpec.RequestID {
+		t.Fatalf("second.RequestID = %q, want %q", second.RequestID, secondSpec.RequestID)
+	}
+
+	if second.PDF.FileName != "cached.pdf" {
+		t.Fatalf("second.PDF.FileName = %q, want cached.pdf", second.PDF.FileName)
+	}
+
+	if second.PDF.Base64 != first.PDF.Base64 {
+		t.Fatalf("cache hit returned different PDF payloads")
+	}
+
+	if second.Artifacts == nil || second.Artifacts.ID == "" {
+		t.Fatalf("expected cache hit to persist a fresh artifact bundle, got %#v", second.Artifacts)
+	}
+
+	if second.Artifacts.ID == first.Artifacts.ID {
+		t.Fatalf("expected cache hit to create a fresh artifact bundle, got reused ID %q", second.Artifacts.ID)
+	}
+}
+
 func TestDispatchQueuesJobAndReturnsCompletedResult(t *testing.T) {
 	if !browserAvailable() {
 		t.Skip("Chrome/Chromium is not available on this machine")
@@ -232,4 +330,36 @@ func testRuntimeConfig() config.RuntimeConfig {
 	}
 
 	return cfg
+}
+
+type fakeRenderer struct {
+	calls          int
+	pdf            []byte
+	warnings       []string
+	debugArtifacts *contracts.DebugArtifacts
+	timings        map[string]int64
+}
+
+func (f *fakeRenderer) Render(context.Context, contracts.RenderSpec) ([]byte, []string, *contracts.DebugArtifacts, map[string]int64, error) {
+	f.calls++
+	return append([]byte(nil), f.pdf...), append([]string(nil), f.warnings...), f.debugArtifacts, cloneTimingsMap(f.timings), nil
+}
+
+func (f *fakeRenderer) Status() browser.PoolStatus {
+	return browser.PoolStatus{}
+}
+
+func (f *fakeRenderer) Close() {}
+
+func cloneTimingsMap(timings map[string]int64) map[string]int64 {
+	if len(timings) == 0 {
+		return nil
+	}
+
+	cloned := make(map[string]int64, len(timings))
+	for key, value := range timings {
+		cloned[key] = value
+	}
+
+	return cloned
 }

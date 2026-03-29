@@ -7,6 +7,7 @@ namespace Oxhq\Canio;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Filesystem\FilesystemManager;
 use Illuminate\Support\Facades\File;
+use Oxhq\Canio\Contracts\CanioCloudSyncer;
 use Oxhq\Canio\Contracts\StagehandClient;
 use Oxhq\Canio\Data\RenderJob;
 use Oxhq\Canio\Data\RenderResult;
@@ -21,6 +22,7 @@ final class CanioManager
      */
     public function __construct(
         private readonly StagehandClient $stagehand,
+        private readonly CanioCloudSyncer $cloudSyncer,
         private readonly FilesystemManager $filesystems,
         private readonly ViewFactory $views,
         private readonly array $config,
@@ -46,7 +48,16 @@ final class CanioManager
 
     public function render(PendingRender $render): RenderResult
     {
-        return $this->stagehand->render($this->prepareRenderSpec($render));
+        $spec = $this->prepareRenderSpec($render);
+        $result = $this->stagehand->render($spec);
+
+        try {
+            $this->cloudSyncer->syncRender($spec, $result);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
+        return $result;
     }
 
     public function dispatch(PendingRender $render): RenderJob

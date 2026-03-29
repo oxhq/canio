@@ -35,6 +35,16 @@ final class RenderResult
         return (string) ($this->attributes['status'] ?? 'unknown');
     }
 
+    public function requestId(): string
+    {
+        return (string) ($this->attributes['requestId'] ?? '');
+    }
+
+    public function jobId(): string
+    {
+        return (string) ($this->attributes['jobId'] ?? '');
+    }
+
     public function fileName(): string
     {
         $pdf = $this->pdf();
@@ -102,6 +112,13 @@ final class RenderResult
         ], static fn (mixed $value): bool => $value !== null && $value !== '');
 
         return new self($attributes);
+    }
+
+    public function bytes(): int
+    {
+        $pdf = $this->pdf();
+
+        return (int) ($pdf['bytes'] ?? 0);
     }
 
     /**

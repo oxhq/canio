@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
-	"github.com/chromedp/cdproto/emulation"
-	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	cdpruntime "github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
@@ -34,34 +32,41 @@ type Renderer struct {
 	initErr error
 	pool    *Pool
 	mu      sync.RWMutex
+	pageMu  sync.RWMutex
+	pages   map[int]string
 }
 
 func New(cfg config.RuntimeConfig) *Renderer {
 	return &Renderer{
 		config: cfg,
+		pages:  map[int]string{},
 	}
 }
 
-func (r *Renderer) Render(ctx context.Context, spec contracts.RenderSpec) ([]byte, []string, *contracts.DebugArtifacts, error) {
+func (r *Renderer) Render(ctx context.Context, spec contracts.RenderSpec) ([]byte, []string, *contracts.DebugArtifacts, map[string]int64, error) {
 	renderCtx, renderCancel := context.WithTimeout(ctx, resolveRenderTimeout(spec))
 	defer renderCancel()
 
-	if err := r.ensureStarted(renderCtx); err != nil {
-		return nil, nil, nil, err
-	}
+	timings := map[string]int64{}
+	renderStart := time.Now()
 
+	startedAt := time.Now()
+	if err := r.ensureStarted(renderCtx); err != nil {
+		return nil, nil, nil, timings, err
+	}
+	timings["startupMs"] = time.Since(startedAt).Milliseconds()
+
+	startedAt = time.Now()
 	lease, err := r.acquireLease(renderCtx, spec)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, timings, err
 	}
 	defer func() {
 		_ = lease.Release()
 	}()
+	timings["acquireMs"] = time.Since(startedAt).Milliseconds()
 
-	tabCtx, tabCancel := chromedp.NewContext(lease.Browser().Context())
-	defer tabCancel()
-
-	runCtx, runCancel := bindContext(renderCtx, tabCtx)
+	runCtx, runCancel := bindContext(renderCtx, lease.Browser().Context())
 	defer runCancel()
 
 	var artifactsCollector *debugArtifactsCollector
@@ -69,37 +74,38 @@ func (r *Renderer) Render(ctx context.Context, spec contracts.RenderSpec) ([]byt
 		artifactsCollector = newDebugArtifactsCollector(runCtx)
 	}
 
-	if err := chromedp.Run(runCtx,
-		network.Enable(),
-		page.Enable(),
-		cdpruntime.Enable(),
-		emulation.SetEmulatedMedia().WithMedia("print"),
-	); err != nil {
-		return nil, nil, nil, err
-	}
-
-	warnings, err := r.prepareDocument(runCtx, spec)
+	startedAt = time.Now()
+	warnings, err := r.prepareDocument(runCtx, spec, lease.ID())
 	if err != nil {
-		return nil, warnings, nil, err
+		return nil, warnings, nil, timings, err
 	}
+	timings["prepareMs"] = time.Since(startedAt).Milliseconds()
 
+	startedAt = time.Now()
 	if err := r.waitUntilReady(runCtx, spec); err != nil {
-		return nil, warnings, nil, err
+		return nil, warnings, nil, timings, err
 	}
+	timings["waitMs"] = time.Since(startedAt).Milliseconds()
 
+	startedAt = time.Now()
 	pdfData, err := r.printToPDF(runCtx, spec)
 	if err != nil {
-		return nil, warnings, nil, err
+		return nil, warnings, nil, timings, err
 	}
+	timings["printMs"] = time.Since(startedAt).Milliseconds()
 
 	var debugArtifacts *contracts.DebugArtifacts
 	if artifactsCollector != nil {
 		var artifactWarnings []string
+		startedAt = time.Now()
 		debugArtifacts, artifactWarnings = artifactsCollector.Finalize(runCtx)
+		timings["debugArtifactsMs"] = time.Since(startedAt).Milliseconds()
 		warnings = append(warnings, artifactWarnings...)
 	}
 
-	return pdfData, warnings, debugArtifacts, nil
+	timings["renderMs"] = time.Since(renderStart).Milliseconds()
+
+	return pdfData, warnings, debugArtifacts, timings, nil
 }
 
 func (r *Renderer) Status() PoolStatus {
@@ -191,48 +197,44 @@ func (r *Renderer) acquireLease(ctx context.Context, spec contracts.RenderSpec) 
 	return pool.AcquireWithTimeout(ctx, timeout)
 }
 
-func (r *Renderer) prepareDocument(ctx context.Context, spec contracts.RenderSpec) ([]string, error) {
+func (r *Renderer) prepareDocument(ctx context.Context, spec contracts.RenderSpec, slotID int) ([]string, error) {
 	switch spec.Source.Type {
 	case "html":
-		return r.prepareHTML(ctx, spec)
+		return r.prepareHTML(ctx, spec, slotID)
 	case "view":
 		if htmlMarkup := resolveString(spec.Source.Payload["html"]); htmlMarkup != "" {
 			spec.Source.Type = "html"
 			spec.Source.Payload = map[string]any{
 				"html": htmlMarkup,
 			}
-			return r.prepareHTML(ctx, spec)
+			return r.prepareHTML(ctx, spec, slotID)
 		}
 
 		return nil, fmt.Errorf("source.type=view requires normalized payload.html before it reaches Stagehand")
 	case "url":
-		return nil, r.prepareURL(ctx, spec)
+		return nil, r.prepareURL(ctx, spec, slotID)
 	default:
 		return nil, fmt.Errorf("unsupported render source %q", spec.Source.Type)
 	}
 }
 
-func (r *Renderer) prepareHTML(ctx context.Context, spec contracts.RenderSpec) ([]string, error) {
+func (r *Renderer) prepareHTML(ctx context.Context, spec contracts.RenderSpec, slotID int) ([]string, error) {
 	htmlMarkup := resolveString(spec.Source.Payload["html"])
 	if strings.TrimSpace(htmlMarkup) == "" {
 		return nil, fmt.Errorf("html render source is missing payload.html")
 	}
 
 	baseURL := resolveString(spec.Source.Payload["baseUrl"])
-	targetURL := "about:blank"
+	targetURL := resolveHTMLBootstrapURL(spec)
 	warnings := make([]string, 0, 1)
 
-	if baseURL != "" {
-		targetURL = baseURL
-	}
-
-	if err := chromedp.Run(ctx, chromedp.Navigate(targetURL)); err != nil {
-		if baseURL == "" {
+	if err := r.ensureBootstrapURL(ctx, slotID, targetURL); err != nil {
+		if targetURL == "about:blank" {
 			return warnings, err
 		}
 
 		warnings = append(warnings, fmt.Sprintf("base URL %q was unreachable; Stagehand fell back to about:blank", baseURL))
-		if fallbackErr := chromedp.Run(ctx, chromedp.Navigate("about:blank")); fallbackErr != nil {
+		if fallbackErr := r.ensureBootstrapURL(ctx, slotID, "about:blank"); fallbackErr != nil {
 			return warnings, fallbackErr
 		}
 	}
@@ -269,7 +271,7 @@ func (r *Renderer) prepareHTML(ctx context.Context, spec contracts.RenderSpec) (
 	return warnings, nil
 }
 
-func (r *Renderer) prepareURL(ctx context.Context, spec contracts.RenderSpec) error {
+func (r *Renderer) prepareURL(ctx context.Context, spec contracts.RenderSpec, slotID int) error {
 	targetURL := resolveString(spec.Source.Payload["url"])
 	if strings.TrimSpace(targetURL) == "" {
 		return fmt.Errorf("url render source is missing payload.url")
@@ -277,12 +279,16 @@ func (r *Renderer) prepareURL(ctx context.Context, spec contracts.RenderSpec) er
 
 	resp, err := chromedp.RunResponse(ctx, chromedp.Navigate(targetURL))
 	if err != nil {
+		r.clearBootstrapURL(slotID)
 		return err
 	}
 
 	if resp != nil && resp.Status >= 400 {
+		r.clearBootstrapURL(slotID)
 		return fmt.Errorf("navigation to %s returned HTTP %d", targetURL, resp.Status)
 	}
+
+	r.setBootstrapURL(slotID, targetURL)
 
 	if title := strings.TrimSpace(spec.Document.Title); title != "" {
 		return setDocumentTitle(ctx, title)
@@ -293,6 +299,8 @@ func (r *Renderer) prepareURL(ctx context.Context, spec contracts.RenderSpec) er
 
 func (r *Renderer) waitUntilReady(ctx context.Context, spec contracts.RenderSpec) error {
 	waitTimeout := resolveWaitTimeout(spec)
+	pollInterval := normalizeReadyPollInterval(r.config.ReadyPollIntervalMs)
+	settleFrames := normalizeReadySettleFrames(r.config.ReadySettleFrames)
 
 	return chromedp.Run(ctx,
 		chromedp.WaitReady("body", chromedp.ByQuery),
@@ -304,10 +312,12 @@ func (r *Renderer) waitUntilReady(ctx context.Context, spec contracts.RenderSpec
 			const legacyReady = typeof window.CANIO_READY === "undefined" || window.CANIO_READY === true;
 			return documentReady && fontsReady && imagesReady && canioReady && legacyReady;
 		}`, nil,
-			chromedp.WithPollingInterval(100*time.Millisecond),
+			chromedp.WithPollingInterval(pollInterval),
 			chromedp.WithPollingTimeout(waitTimeout),
 		),
-		chromedp.Sleep(150*time.Millisecond),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			return waitForAnimationFrames(ctx, settleFrames)
+		}),
 	)
 }
 
@@ -452,6 +462,22 @@ func normalizeQueueDepth(depth int) int {
 	return depth
 }
 
+func normalizeReadyPollInterval(intervalMs int) time.Duration {
+	if intervalMs <= 0 {
+		return 50 * time.Millisecond
+	}
+
+	return time.Duration(intervalMs) * time.Millisecond
+}
+
+func normalizeReadySettleFrames(frames int) int {
+	if frames <= 0 {
+		return 0
+	}
+
+	return frames
+}
+
 func resolvePaperSize(presentation map[string]any) (float64, float64, bool) {
 	if raw, ok := presentation["paperSize"]; ok {
 		if paper, ok := raw.([]any); ok && len(paper) >= 3 {
@@ -516,6 +542,111 @@ func resolveHeaderAndFooter(spec contracts.RenderSpec) (string, string, bool) {
 
 func defaultPageNumberFooter() string {
 	return `<div style="width:100%;font-size:8px;color:#666;padding:0 12px;text-align:center;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>`
+}
+
+func waitForAnimationFrames(ctx context.Context, frames int) error {
+	if frames <= 0 {
+		return nil
+	}
+
+	expression := fmt.Sprintf(`new Promise((resolve) => {
+		let remaining = %d;
+		const tick = () => {
+			remaining -= 1;
+			if (remaining <= 0) {
+				resolve(true);
+				return;
+			}
+
+			requestAnimationFrame(tick);
+		};
+
+		requestAnimationFrame(tick);
+	})`, frames)
+
+	_, exception, err := cdpruntime.Evaluate(expression).
+		WithAwaitPromise(true).
+		Do(ctx)
+	if err != nil {
+		return err
+	}
+
+	if exception != nil {
+		return fmt.Errorf("requestAnimationFrame settle failed: %s", exception.Text)
+	}
+
+	return nil
+}
+
+func (r *Renderer) ensureBootstrapURL(ctx context.Context, slotID int, targetURL string) error {
+	targetURL = strings.TrimSpace(targetURL)
+	if targetURL == "" {
+		targetURL = "about:blank"
+	}
+
+	currentURL, known := r.bootstrapURL(slotID)
+	if known && currentURL == targetURL {
+		return nil
+	}
+
+	if !known && targetURL == "about:blank" {
+		r.setBootstrapURL(slotID, targetURL)
+		return nil
+	}
+
+	if err := chromedp.Run(ctx, chromedp.Navigate(targetURL)); err != nil {
+		r.clearBootstrapURL(slotID)
+		return err
+	}
+
+	r.setBootstrapURL(slotID, targetURL)
+
+	return nil
+}
+
+func (r *Renderer) bootstrapURL(slotID int) (string, bool) {
+	r.pageMu.RLock()
+	defer r.pageMu.RUnlock()
+
+	url, ok := r.pages[slotID]
+
+	return url, ok
+}
+
+func (r *Renderer) setBootstrapURL(slotID int, targetURL string) {
+	r.pageMu.Lock()
+	defer r.pageMu.Unlock()
+
+	r.pages[slotID] = targetURL
+}
+
+func (r *Renderer) clearBootstrapURL(slotID int) {
+	r.pageMu.Lock()
+	defer r.pageMu.Unlock()
+
+	delete(r.pages, slotID)
+}
+
+func resolveHTMLBootstrapURL(spec contracts.RenderSpec) string {
+	baseURL := resolveString(spec.Source.Payload["baseUrl"])
+	if baseURL == "" {
+		return "about:blank"
+	}
+
+	if shouldRenderHTMLFromBlank(spec.Source.Payload) {
+		return "about:blank"
+	}
+
+	return baseURL
+}
+
+func shouldRenderHTMLFromBlank(payload map[string]any) bool {
+	origin, ok := payload["origin"].(map[string]any)
+	if !ok {
+		return false
+	}
+
+	return resolveString(origin["type"]) == "view"
 }
 
 func injectBaseHref(markup string, baseURL string) string {

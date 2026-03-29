@@ -437,6 +437,8 @@ func applyPoolFlags(fs *flag.FlagSet, cfg *config.RuntimeConfig) {
 	fs.IntVar(&cfg.BrowserPoolWarm, "browser-pool-warm", cfg.BrowserPoolWarm, "How many browser processes to prewarm on startup")
 	fs.IntVar(&cfg.BrowserQueueDepth, "browser-queue-depth", cfg.BrowserQueueDepth, "Maximum number of renders allowed to wait for a browser slot")
 	fs.IntVar(&cfg.AcquireTimeoutSec, "browser-acquire-timeout", cfg.AcquireTimeoutSec, "Seconds a render can wait for a browser slot before timing out")
+	fs.IntVar(&cfg.ReadyPollIntervalMs, "ready-poll-interval-ms", cfg.ReadyPollIntervalMs, "Polling interval in milliseconds while waiting for page readiness")
+	fs.IntVar(&cfg.ReadySettleFrames, "ready-settle-frames", cfg.ReadySettleFrames, "Animation frames to wait after readiness before printing")
 	fs.StringVar(&cfg.JobBackend, "job-backend", cfg.JobBackend, "Async jobs backend: memory or redis")
 	fs.IntVar(&cfg.JobWorkerCount, "job-workers", cfg.JobWorkerCount, "Number of background job workers available for async renders")
 	fs.IntVar(&cfg.JobQueueDepth, "job-queue-depth", cfg.JobQueueDepth, "Maximum number of async jobs buffered by the runtime queue")

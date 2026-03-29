@@ -146,3 +146,94 @@ func TestStoreArtifactCanReplaySpecAfterInspect(t *testing.T) {
 		t.Fatalf("loaded.RequestID = %q, want %q", loaded.RequestID, spec.RequestID)
 	}
 }
+
+func TestStoreRenderCacheRoundTripIgnoresRequestID(t *testing.T) {
+	t.Parallel()
+
+	store := New(t.TempDir())
+	spec := contracts.RenderSpec{
+		ContractVersion: contracts.RenderSpecContractVersion,
+		RequestID:       "req-cache-1",
+		Profile:         "invoice",
+		Source: contracts.RenderSource{
+			Type: "html",
+			Payload: map[string]any{
+				"html": "<html><body>Cached</body></html>",
+			},
+		},
+		Debug: map[string]any{
+			"enabled": true,
+		},
+	}
+	result := contracts.RenderResult{
+		ContractVersion: contracts.RenderResultContractVersion,
+		RequestID:       spec.RequestID,
+		JobID:           "job-cache-1",
+		Status:          "completed",
+		Warnings:        []string{"font fallback"},
+		Timings: map[string]int64{
+			"renderMs": 123,
+		},
+		PDF: contracts.RenderedPDF{
+			Base64:      "cGRm",
+			ContentType: "application/pdf",
+			FileName:    "cached.pdf",
+			Bytes:       3,
+		},
+	}
+	debugArtifacts := &contracts.DebugArtifacts{
+		ScreenshotPNG: []byte("png"),
+		DOMSnapshot:   "<html><body>snapshot</body></html>",
+		Console: []contracts.ConsoleEvent{
+			{Type: "log", Message: "ready"},
+		},
+		Network: []contracts.NetworkEvent{
+			{Stage: "response", RequestID: "req-1", Status: 200},
+		},
+	}
+
+	if err := store.SaveRenderCache(spec, result, []byte("pdf"), debugArtifacts); err != nil {
+		t.Fatalf("SaveRenderCache() error = %v", err)
+	}
+
+	loaded, err := store.LoadRenderCache(contracts.RenderSpec{
+		ContractVersion: contracts.RenderSpecContractVersion,
+		RequestID:       "req-cache-2",
+		Profile:         spec.Profile,
+		Source:          spec.Source,
+		Debug:           spec.Debug,
+	})
+	if err != nil {
+		t.Fatalf("LoadRenderCache() error = %v", err)
+	}
+
+	if loaded.Hash == "" {
+		t.Fatal("expected cache hash to be populated")
+	}
+
+	if string(loaded.PDFBytes) != "pdf" {
+		t.Fatalf("loaded.PDFBytes = %q, want %q", string(loaded.PDFBytes), "pdf")
+	}
+
+	if len(loaded.Warnings) != 1 || loaded.Warnings[0] != "font fallback" {
+		t.Fatalf("loaded.Warnings = %#v, want font fallback", loaded.Warnings)
+	}
+
+	if got := loaded.DebugArtifacts; got == nil || string(got.ScreenshotPNG) != "png" || got.DOMSnapshot != "<html><body>snapshot</body></html>" {
+		t.Fatalf("loaded.DebugArtifacts = %#v, want screenshot + dom snapshot", got)
+	}
+
+	if len(loaded.DebugArtifacts.Console) != 1 || len(loaded.DebugArtifacts.Network) != 1 {
+		t.Fatalf("loaded.DebugArtifacts events = %#v, want 1 console + 1 network", loaded.DebugArtifacts)
+	}
+}
+
+func TestStoreRenderCacheMissingReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	store := New(t.TempDir())
+
+	if _, err := store.LoadRenderCache(contracts.RenderSpec{RequestID: "req-missing"}); !errors.Is(err, ErrRenderCacheNotFound) {
+		t.Fatalf("LoadRenderCache() error = %v, want ErrRenderCacheNotFound", err)
+	}
+}
