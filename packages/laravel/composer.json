@@ -1,6 +1,5 @@
 {
   "name": "oxhq/canio",
-  "version": "0.1.0",
   "description": "Opinionated PDF and document execution engine for Laravel powered by Stagehand",
   "type": "library",
   "license": "MIT",

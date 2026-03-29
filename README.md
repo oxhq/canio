@@ -1,98 +1,27 @@
 # Canio
 
-`Canio` is the Laravel PDF package for browser-grade documents.
-It keeps the public API Laravel-native and hides the bundled `Stagehand` runtime behind an embedded default flow.
+Canio is the Laravel PDF package for browser-grade documents.
 
-The short version:
+It exists for the cases where classic HTML-to-PDF engines stop being enough: browser-real layout, JavaScript that must finish before capture, explicit readiness, debug artifacts, and operational rendering flows.
 
-- if you need the fastest possible static HTML-to-PDF path, simpler engines such as Dompdf or mPDF can still win on raw latency
-- if you need real browser layout, explicit readiness, JavaScript execution, debug artifacts, and reproducible fidelity checks, Canio is the package this repo is building toward
+If the only requirement is the lowest possible uncached latency on a simple static document, smaller engines such as Dompdf or mPDF can still be faster. That is not the category Canio is optimized for.
 
 ## Why Canio
 
-Canio is aimed at the problems that older Laravel PDF packages handle poorly:
+Use Canio when your Laravel app needs one or more of these:
 
-- documents that depend on real browser layout instead of HTML-to-PDF approximation
-- documents that need JavaScript to finish rendering before the PDF is captured
-- production debugging where you need the HTML source, DOM snapshot, screenshot, console log, or network log
-- async or remote execution where rendering is treated as an operator-managed workload, not just a one-off helper
+- real Chromium layout instead of approximation
+- JavaScript execution before the PDF is captured
+- an explicit readiness contract through `window.__CANIO_READY__`
+- persisted artifacts such as HTML source, DOM snapshot, screenshot, console log, or network log
+- async rendering, retries, dead letters, replay, and runtime operations
 
-What Canio is not trying to be:
-
-- the absolute fastest renderer for simple static invoices
-- a Node-first PDF tool exposed directly to Laravel apps
-- a package that makes users manage Chromium or a daemon manually in the happy path
-
-## Positioning
-
-The current benchmark story in this repo is consistent:
-
-- on the example invoice fixture, Canio is the most faithful renderer in the matrix and already beats Browsershot and Snappy on useful performance
-- on repeated exact renders, Canio can serve from render cache and drop to single-digit milliseconds
-- on a dedicated JavaScript probe, only Canio and Browsershot execute the runtime-injected badge correctly in this harness, and Canio is materially faster in steady-state
-- Dompdf and mPDF still win on raw uncached latency for simple static documents, which is expected because they do less work
-
-That means the right claim is not “fastest Laravel PDF package overall”.
-The right claim is: Canio is the Laravel PDF package for browser-real, high-fidelity documents.
-
-## Repository Map
-
-```text
-/packages/laravel      Laravel-first public package
-/runtime/stagehand     Mandatory Go runtime and daemon
-/resources/profiles    Official document profiles
-/resources/stubs       App-facing stubs for jobs/listeners
-/docs                  Architecture and contract notes
-/examples              Local usage examples
-/benchmarks            Benchmark scaffolding and comparison harnesses
-/docker                Image and deployment notes
-/scripts               Build and release helpers
-```
-
-## Core Capabilities
-
-- Laravel-native facade API: `Canio::view()`, `Canio::html()`, `Canio::url()`
-- embedded default runtime mode with auto-install and auto-start
-- real Chrome/Chromium rendering through CDP
-- explicit readiness support through `window.__CANIO_READY__`
-- debug/watch renders with persisted artifacts
-- browser pooling, queue backpressure, and runtime metrics
-- async jobs with retry, dead-lettering, replay, and Redis-backed transport
-- signed Stagehand transport plus optional webhook callbacks into Laravel
-- optional Laravel ops dashboard for operators
-- render cache plus persistent-page optimizations for warm paths
-
-## How It Works
-
-1. Laravel builds a render request from a Blade view, raw HTML string, or URL.
-2. The package sends that normalized render spec to `Stagehand`. In the default embedded mode, Canio installs and starts the runtime automatically when needed.
-3. `Stagehand` renders through Chrome/Chromium, waits for explicit readiness when the document exposes `window.__CANIO_READY__`, prints the PDF, and optionally persists artifacts, metrics, and async job state.
-
-## Benchmarks
-
-The repo ships reproducible benchmark harnesses instead of hand-wavy claims.
-
-Use them to answer different questions:
-
-- invoice fidelity harness: “does Canio still render the reference invoice correctly?”
-- invoice matrix: “how does Canio compare to Dompdf, mPDF, Snappy, and Browsershot on the same fixture?”
-- JavaScript probe matrix: “which engines actually execute runtime JavaScript before PDF capture?”
-- Stagehand soaks: “how does the runtime behave under pool pressure and job concurrency?”
-
-Benchmark methodology lives in [benchmarks/README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/benchmarks/README.md).
-Developer setup and local validation workflows live in [docs/development.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/docs/development.md).
-
-## Install In Laravel
-
-Install the package:
+## Quick Start
 
 ```bash
 composer require oxhq/canio
+php artisan canio:install
 ```
-
-In the default embedded mode, Canio will install and start the matching `stagehand` runtime automatically on first use.
-
-Minimal example:
 
 ```php
 use Oxhq\Canio\Facades\Canio;
@@ -103,33 +32,64 @@ return Canio::view('pdf.invoice', ['invoice' => $invoice])
     ->stream('invoice.pdf');
 ```
 
-Full Laravel package installation and API docs live in [packages/laravel/README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/packages/laravel/README.md).
+By default, Canio runs in `embedded` mode:
 
-## Example App
+- the Laravel package installs the matching Stagehand runtime when needed
+- the first render auto-starts the local runtime
+- the public API stays Laravel-native: `view()`, `html()`, `url()`
 
-The repo carries a local reference Laravel app so the package can be exercised end to end:
+Full installation, runtime modes, and package API live in [packages/laravel/README.md](packages/laravel/README.md).
 
-```bash
-make example-app
+## Product Positioning
+
+The claim this repository supports is narrow on purpose:
+
+`Canio is the Laravel package for browser-real, high-fidelity PDFs.`
+
+The benchmark harnesses in this repo currently support that claim:
+
+- Canio is the most faithful renderer on the checked-in invoice fixture
+- Canio beats Browsershot and Snappy on useful performance in that browser-grade lane
+- Canio executes runtime JavaScript correctly in the probe harness
+- Dompdf and mPDF still win on raw uncached latency for simple static renders
+
+Public benchmark summary: [docs/benchmark-summary.md](docs/benchmark-summary.md)  
+Reproducible harnesses: [benchmarks/README.md](benchmarks/README.md)
+
+## Cloud
+
+Canio OSS works standalone.
+
+Cloud is an optional paid layer on top of the package. It is not part of the required install path and it is not the core OSS story. The public package should stand on its own without any cloud dependency.
+
+## Repository Layout
+
+```text
+/packages/laravel      Laravel-facing public package
+/runtime/stagehand     Go runtime used by embedded and remote modes
+/resources/profiles    Official document profiles
+/benchmarks            Reproducible fidelity, fairness, and JS-capability harnesses
+/examples              Local example app and demo stubs
+/docs                  Development, architecture, and benchmark notes
+/docker                Container and deployment assets
 ```
 
-Useful example routes:
+## Documentation
 
-- `/invoices/preview`
-- `/invoices/dispatch`
-- `/probes/javascript`
-- `/probes/javascript/preview`
-- `/canio/ops`
+- Package install and usage: [packages/laravel/README.md](packages/laravel/README.md)
+- Public benchmark summary: [docs/benchmark-summary.md](docs/benchmark-summary.md)
+- Contributor setup: [docs/development.md](docs/development.md)
+- Example app: [examples/laravel-app/README.md](examples/laravel-app/README.md)
+- Architecture notes: [docs/architecture.md](docs/architecture.md)
+- Render contract: [docs/render-contract.md](docs/render-contract.md)
 
-Example app documentation lives in [examples/laravel-app/README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/examples/laravel-app/README.md).
+## Status
 
-## Development
+This repository is launching Canio as `v1.0.0` for the Laravel package.
 
-Developer setup, tests, benchmark commands, bundling, and contributor workflows live in [docs/development.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/docs/development.md).
+That means:
 
-## Design Notes
-
-- `Stagehand` stays mandatory, but in the default Laravel experience it is treated as an implementation detail
-- the public UX stays Laravel-first and does not require manual daemon management in the happy path
-- the benchmark story is part of the product story, not a side document: fidelity, JS capability, and throughput are all checked in this repo
-- Canio is strongest when the document needs a browser, not when the only goal is minimal uncached latency
+- public install path is `composer require oxhq/canio`
+- Stagehand release assets remain published from this monorepo
+- the monorepo stays the source of truth
+- the Laravel package may be mirrored into a split repository for Packagist distribution, but the product source remains here

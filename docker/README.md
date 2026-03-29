@@ -2,11 +2,11 @@
 
 This directory now includes the first production-oriented deployment assets:
 
-- [stagehand.Dockerfile](/Users/garaekz/Documents/projects/packages/oxhq/canio/docker/stagehand.Dockerfile) for a browser-capable Stagehand image
-- [php-fpm.Dockerfile](/Users/garaekz/Documents/projects/packages/oxhq/canio/docker/php-fpm.Dockerfile) plus [php-fpm-entrypoint.sh](/Users/garaekz/Documents/projects/packages/oxhq/canio/docker/php-fpm-entrypoint.sh) for the example Laravel app
-- [docker-compose.example.yml](/Users/garaekz/Documents/projects/packages/oxhq/canio/docker/docker-compose.example.yml) to run Laravel + Nginx + Stagehand + Redis together
-- [nginx/canio.conf](/Users/garaekz/Documents/projects/packages/oxhq/canio/docker/nginx/canio.conf) to serve the app and proxy Stagehand health/metrics
-- [systemd/stagehand.service](/Users/garaekz/Documents/projects/packages/oxhq/canio/docker/systemd/stagehand.service) plus [systemd/stagehand.env.example](/Users/garaekz/Documents/projects/packages/oxhq/canio/docker/systemd/stagehand.env.example) for host deployments
+- [stagehand.Dockerfile](./stagehand.Dockerfile) for a browser-capable Stagehand image
+- [php-fpm.Dockerfile](./php-fpm.Dockerfile) plus [php-fpm-entrypoint.sh](./php-fpm-entrypoint.sh) for the example Laravel app
+- [docker-compose.example.yml](./docker-compose.example.yml) to run Laravel + Nginx + Stagehand + Redis together
+- [nginx/canio.conf](./nginx/canio.conf) to serve the app and proxy Stagehand health/metrics
+- [systemd/stagehand.service](./systemd/stagehand.service) plus [systemd/stagehand.env.example](./systemd/stagehand.env.example) for host deployments
 
 ## Local Container Stack
 
@@ -35,8 +35,8 @@ The example stack uses Redis-backed Stagehand jobs, signed Laravel <-> Stagehand
 For non-container Linux hosts:
 
 1. Install the Stagehand binary into `/usr/local/bin/stagehand`
-2. Copy [systemd/stagehand.service](/Users/garaekz/Documents/projects/packages/oxhq/canio/docker/systemd/stagehand.service) to `/etc/systemd/system/stagehand.service`
-3. Copy [systemd/stagehand.env.example](/Users/garaekz/Documents/projects/packages/oxhq/canio/docker/systemd/stagehand.env.example) to `/etc/canio/stagehand.env` and set real secrets
+2. Copy [systemd/stagehand.service](./systemd/stagehand.service) to `/etc/systemd/system/stagehand.service`
+3. Copy [systemd/stagehand.env.example](./systemd/stagehand.env.example) to `/etc/canio/stagehand.env` and set real secrets
 4. Run `systemctl daemon-reload && systemctl enable --now stagehand`
 
 Protect `/metrics` and `/healthz` at the network or reverse-proxy layer if they should not be public.

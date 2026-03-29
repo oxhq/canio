@@ -1,7 +1,7 @@
 # Benchmarks
 
 This directory contains the reproducible benchmark and smoke harnesses for Canio.
-Repository setup, test commands, and runtime build steps live in [docs/development.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/docs/development.md).
+Repository setup, test commands, and runtime build steps live in [docs/development.md](../docs/development.md).
 
 The benchmark story in this repo is intentionally split by question, because one number does not explain a PDF engine:
 

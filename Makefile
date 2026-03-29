@@ -2,7 +2,7 @@ PHP_DIR := packages/laravel
 GO_DIR := runtime/stagehand
 BIN_DIR := bin
 
-.PHONY: test test-php test-go build-stagehand docker-build-stagehand docker-up-example docker-down-example example-app
+.PHONY: test test-php test-go check-release build-stagehand docker-build-stagehand docker-up-example docker-down-example example-app split-package smoke-launch
 
 test: test-go test-php
 
@@ -11,6 +11,9 @@ test-php:
 
 test-go:
 	cd $(GO_DIR) && go test ./...
+
+check-release:
+	./scripts/check-release-surface.sh
 
 build-stagehand:
 	./scripts/build-stagehand.sh $(BIN_DIR)/stagehand
@@ -26,3 +29,9 @@ docker-down-example:
 
 example-app:
 	./examples/laravel-app/create-project.sh
+
+split-package:
+	./scripts/publish-split-package.sh
+
+smoke-launch:
+	./scripts/smoke-launch.sh

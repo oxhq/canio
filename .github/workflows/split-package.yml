@@ -1,0 +1,41 @@
+name: Split Laravel Package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  split-laravel-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure split repository remote
+        env:
+          SPLIT_PUSH_TOKEN: ${{ secrets.CANIO_LARAVEL_SPLIT_PUSH_TOKEN }}
+        run: |
+          if [ -z "$SPLIT_PUSH_TOKEN" ]; then
+            echo "Missing CANIO_LARAVEL_SPLIT_PUSH_TOKEN secret." >&2
+            exit 1
+          fi
+          echo "SPLIT_REPO_REMOTE_URL=https://x-access-token:${SPLIT_PUSH_TOKEN}@github.com/oxhq/canio-laravel.git" >> "$GITHUB_ENV"
+
+      - name: Validate release surfaces
+        run: ./scripts/check-release-surface.sh
+
+      - name: Publish Laravel split repository
+        env:
+          SPLIT_REPO_REMOTE_URL: ${{ env.SPLIT_REPO_REMOTE_URL }}
+          GITHUB_REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: ./scripts/publish-split-package.sh

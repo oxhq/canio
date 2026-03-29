@@ -8,18 +8,18 @@ This folder now carries a bootstrap script plus app stubs so you can spin up a r
 ./examples/laravel-app/create-project.sh
 ```
 
-By default the app is created in [examples/laravel-app/app](/Users/garaekz/Documents/projects/packages/oxhq/canio/examples/laravel-app/app), configured as a path repository to [packages/laravel](/Users/garaekz/Documents/projects/packages/oxhq/canio/packages/laravel), and published with a local Canio config.
+By default the app is created in [examples/laravel-app/app](./app), configured as a path repository to [packages/laravel](../../packages/laravel), and published with a local Canio config.
 
 ## What The Script Wires
 
 - local package install from `../../../packages/laravel`
-- invoice demo routes in [stubs/routes/web.php](/Users/garaekz/Documents/projects/packages/oxhq/canio/examples/laravel-app/stubs/routes/web.php)
-- a Blade invoice template in [stubs/resources/views/pdf/invoice.blade.php](/Users/garaekz/Documents/projects/packages/oxhq/canio/examples/laravel-app/stubs/resources/views/pdf/invoice.blade.php)
-- a JavaScript execution probe view in [stubs/resources/views/pdf/javascript-probe.blade.php](/Users/garaekz/Documents/projects/packages/oxhq/canio/examples/laravel-app/stubs/resources/views/pdf/javascript-probe.blade.php)
+- invoice demo routes in [stubs/routes/web.php](./stubs/routes/web.php)
+- a Blade invoice template in [stubs/resources/views/pdf/invoice.blade.php](./stubs/resources/views/pdf/invoice.blade.php)
+- a JavaScript execution probe view in [stubs/resources/views/pdf/javascript-probe.blade.php](./stubs/resources/views/pdf/javascript-probe.blade.php)
 - `.env` defaults for embedded runtime autostart, Redis-backed jobs, webhook signing, Canio Cloud sync/managed settings, and an explicitly enabled local ops preset for the demo app
 - a package-first flow where the first render auto-installs and auto-starts Stagehand if needed
-- a cloud smoke script in [stubs/scripts/smoke-cloud.sh](/Users/garaekz/Documents/projects/packages/oxhq/canio/examples/laravel-app/stubs/scripts/smoke-cloud.sh)
-- a cloud smoke test in [stubs/tests/Feature/CanioCloudSmokeTest.php](/Users/garaekz/Documents/projects/packages/oxhq/canio/examples/laravel-app/stubs/tests/Feature/CanioCloudSmokeTest.php)
+- a cloud smoke script in [stubs/scripts/smoke-cloud.sh](./stubs/scripts/smoke-cloud.sh)
+- a cloud smoke test in [stubs/tests/Feature/CanioCloudSmokeTest.php](./stubs/tests/Feature/CanioCloudSmokeTest.php)
 
 ## Local Flow
 
@@ -54,7 +54,7 @@ That sequence validates the three core claims:
 - Canio executes JavaScript before capture
 - Canio is competitive in the browser-grade comparison lane
 
-Developer workflow and benchmark commands live in [docs/development.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/docs/development.md) and [benchmarks/README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/benchmarks/README.md).
+Developer workflow and benchmark commands live in [docs/development.md](../../docs/development.md) and [benchmarks/README.md](../../benchmarks/README.md).
 
 ## Canio Cloud Smoke
 
