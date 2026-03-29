@@ -19,6 +19,7 @@ fi
 
 git config user.name "${GIT_AUTHOR_NAME:-github-actions[bot]}"
 git config user.email "${GIT_AUTHOR_EMAIL:-41898282+github-actions[bot]@users.noreply.github.com}"
+git config --local --unset-all http.https://github.com/.extraheader || true
 
 split_sha="$(git subtree split --prefix="$PREFIX" "$SOURCE_REF")"
 
