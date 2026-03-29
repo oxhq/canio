@@ -99,8 +99,14 @@ jobs:
           go-version-file: runtime/stagehand/go.mod
           cache-dependency-path: runtime/stagehand/go.sum
 
+      - name: Setup Chrome
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+
       - name: Run launch smoke
         env:
+          CANIO_CHROMIUM_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          CANIO_CHROMIUM_NO_SANDBOX: "true"
           CANIO_PACKAGE_SOURCE_MODE: vcs
           CANIO_RUNTIME_RELEASE_VERSION: v1.0.0
         run: ./scripts/smoke-launch.sh
