@@ -4,8 +4,8 @@ This document is the developer-facing entry point for local setup, tests, benchm
 
 Public product positioning lives in:
 
-- [README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/README.md)
-- [packages/laravel/README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/packages/laravel/README.md)
+- [README.md](../README.md)
+- [packages/laravel/README.md](../packages/laravel/README.md)
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ If you want the packaged binary locally:
 make build-stagehand
 ```
 
-That writes the runtime to [bin/stagehand](/Users/garaekz/Documents/projects/packages/oxhq/canio/bin/stagehand).
+That writes the runtime to [bin/stagehand](../bin/stagehand).
 
 ## Test Commands
 
@@ -53,6 +53,14 @@ cd packages/laravel && composer test
 cd runtime/stagehand && go test ./...
 ```
 
+For launch validation, use the clean-install smoke:
+
+```bash
+./scripts/smoke-launch.sh
+```
+
+By default it builds a temporary split-style VCS repo from `packages/laravel`, creates a fresh Laravel app, installs `oxhq/canio:^1.0`, validates `canio:install`, and checks one browser-JS render path.
+
 ## Example App
 
 Bootstrap the local Laravel reference app with:
@@ -67,7 +75,7 @@ Or directly:
 ./examples/laravel-app/create-project.sh
 ```
 
-The generated app lives at [examples/laravel-app/app](/Users/garaekz/Documents/projects/packages/oxhq/canio/examples/laravel-app/app) and is wired to the local package source through a Composer path repository.
+The generated app lives at [examples/laravel-app/app](../examples/laravel-app/app) and is wired to the local package source through a Composer path repository.
 
 Common local flow:
 
@@ -84,11 +92,11 @@ Useful routes:
 - `/probes/javascript/preview`
 - `/canio/ops`
 
-Example-app-specific notes live in [examples/laravel-app/README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/examples/laravel-app/README.md).
+Example-app-specific notes live in [examples/laravel-app/README.md](../examples/laravel-app/README.md).
 
 ## Benchmarking
 
-Cross-engine and runtime benchmark suites live in [benchmarks/README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/benchmarks/README.md).
+Cross-engine and runtime benchmark suites live in [benchmarks/README.md](../benchmarks/README.md).
 
 Most useful entry points:
 
@@ -100,7 +108,7 @@ Most useful entry points:
 ./scripts/benchmark-stagehand.sh --scenario render-pool
 ```
 
-Runtime tuning guidance lives in [docs/benchmarks.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/docs/benchmarks.md).
+Runtime tuning guidance lives in [docs/benchmarks.md](./benchmarks.md).
 
 ## Bundling And Runtime Builds
 
@@ -116,14 +124,14 @@ Or:
 make build-stagehand
 ```
 
-Runtime implementation and operational surface are documented in [runtime/stagehand/README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/runtime/stagehand/README.md).
+Runtime implementation and operational surface are documented in [runtime/stagehand/README.md](../runtime/stagehand/README.md).
 
-Container and deployment assets live in [docker/README.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/docker/README.md).
+Container and deployment assets live in [docker/README.md](../docker/README.md).
 
 ## Architecture Docs
 
 Use these when you need internals instead of product-level usage:
 
-- [docs/architecture.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/docs/architecture.md)
-- [docs/render-contract.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/docs/render-contract.md)
-- [docs/benchmarks.md](/Users/garaekz/Documents/projects/packages/oxhq/canio/docs/benchmarks.md)
+- [docs/architecture.md](./architecture.md)
+- [docs/render-contract.md](./render-contract.md)
+- [docs/benchmarks.md](./benchmarks.md)

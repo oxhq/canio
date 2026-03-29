@@ -7,6 +7,15 @@ on:
       - main
 
 jobs:
+  release-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate release surfaces
+        run: ./scripts/check-release-surface.sh
+
   php-tests:
     runs-on: ubuntu-latest
     strategy:
@@ -70,3 +79,28 @@ jobs:
           context: .
           file: docker/stagehand.Dockerfile
           push: false
+
+  launch-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          coverage: none
+          extensions: intl, zip
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: runtime/stagehand/go.mod
+          cache-dependency-path: runtime/stagehand/go.sum
+
+      - name: Run launch smoke
+        env:
+          CANIO_PACKAGE_SOURCE_MODE: vcs
+          CANIO_RUNTIME_RELEASE_VERSION: v1.0.0
+        run: ./scripts/smoke-launch.sh
