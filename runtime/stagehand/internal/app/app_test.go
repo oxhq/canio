@@ -21,7 +21,7 @@ func TestRenderReturnsInlinePDFPayload(t *testing.T) {
 		t.Skip("Chrome/Chromium is not available on this machine")
 	}
 
-	runtime := New(testRuntimeConfig())
+	runtime := New(testRuntimeConfig(t))
 	defer runtime.Close()
 
 	result, err := runtime.Render(context.Background(), contracts.RenderSpec{
@@ -69,10 +69,7 @@ func TestDebugRenderStoresArtifactsAndReplayWorks(t *testing.T) {
 	}
 
 	cfg := config.Default()
-	if os.Getenv("CI") != "" {
-		cfg.DisableSandbox = true
-	}
-	cfg.StateDir = t.TempDir()
+	cfg = testRuntimeConfig(t)
 
 	runtime := New(cfg)
 	defer runtime.Close()
@@ -237,10 +234,7 @@ func TestDispatchQueuesJobAndReturnsCompletedResult(t *testing.T) {
 	}
 
 	cfg := config.Default()
-	if os.Getenv("CI") != "" {
-		cfg.DisableSandbox = true
-	}
-	cfg.StateDir = t.TempDir()
+	cfg = testRuntimeConfig(t)
 
 	runtime := New(cfg)
 	defer runtime.Close()
@@ -323,11 +317,18 @@ func browserAvailable() bool {
 	return false
 }
 
-func testRuntimeConfig() config.RuntimeConfig {
+func testRuntimeConfig(t *testing.T) config.RuntimeConfig {
+	t.Helper()
+
 	cfg := config.Default()
 	if os.Getenv("CI") != "" {
 		cfg.DisableSandbox = true
 	}
+	cfg.StateDir = t.TempDir()
+	cfg.UserDataDir = t.TempDir()
+	cfg.BrowserPoolSize = 1
+	cfg.BrowserPoolWarm = 1
+	cfg.JobWorkerCount = 1
 
 	return cfg
 }
