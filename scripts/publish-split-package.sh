@@ -22,11 +22,18 @@ git config user.email "${GIT_AUTHOR_EMAIL:-41898282+github-actions[bot]@users.no
 git config --local --unset-all http.https://github.com/.extraheader || true
 
 split_sha="$(git subtree split --prefix="$PREFIX" "$SOURCE_REF")"
+current_branch_sha="$(git ls-remote "$TARGET_REMOTE" "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
 
-git push "$TARGET_REMOTE" "$split_sha:refs/heads/$TARGET_BRANCH" --force
+if [[ "$current_branch_sha" != "$split_sha" ]]; then
+  git push "$TARGET_REMOTE" "$split_sha:refs/heads/$TARGET_BRANCH" --force
+fi
 
 if [[ "$REF_TYPE" == "tag" && "$REF_NAME" == v* ]]; then
-  git push "$TARGET_REMOTE" "$split_sha:refs/tags/$REF_NAME" --force
+  current_tag_sha="$(git ls-remote "$TARGET_REMOTE" "refs/tags/$REF_NAME" | awk '{print $1}')"
+
+  if [[ "$current_tag_sha" != "$split_sha" ]]; then
+    git push "$TARGET_REMOTE" "$split_sha:refs/tags/$REF_NAME" --force
+  fi
 fi
 
 echo "Published $PREFIX from $SOURCE_REF to $TARGET_REMOTE ($split_sha)"
