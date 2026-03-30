@@ -16,6 +16,8 @@ composer require oxhq/canio
 php artisan canio:install
 ```
 
+Public docs: [oxhq.github.io/canio](https://oxhq.github.io/canio/)
+
 The second command is recommended for deployment and validation because it:
 
 - publishes the default config
@@ -93,6 +95,8 @@ Useful config keys:
 - `runtime.install_path`
 - `runtime.startup_timeout`
 
+Production deployment guide: [embedded vs remote runtimes](https://github.com/oxhq/canio/blob/main/docs/deployment.md)
+
 ## Troubleshooting
 
 If the first render fails, check these first:
@@ -153,7 +157,9 @@ The facade also exposes job and artifact helpers, including:
 
 ## More Documentation
 
+- Public docs: [oxhq.github.io/canio](https://oxhq.github.io/canio/)
 - Monorepo overview: [oxhq/canio](https://github.com/oxhq/canio)
+- Production deployment guide: [deployment guide](https://github.com/oxhq/canio/blob/main/docs/deployment.md)
 - Contributor setup: [development guide](https://github.com/oxhq/canio/blob/main/docs/development.md)
 - Architecture notes: [architecture](https://github.com/oxhq/canio/blob/main/docs/architecture.md)
 - Render contract: [render contract](https://github.com/oxhq/canio/blob/main/docs/render-contract.md)

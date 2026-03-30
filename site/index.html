@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Canio</title>
+    <meta name="description" content="Browser-grade PDF and document rendering for Laravel powered by Stagehand.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="topbar">
+        <a class="brand" href="./">Canio</a>
+        <nav class="nav">
+          <a href="./install/">Install</a>
+          <a href="./deploy/">Deploy</a>
+          <a href="https://github.com/oxhq/canio">GitHub</a>
+          <a href="https://packagist.org/packages/oxhq/canio">Packagist</a>
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero">
+          <p class="eyebrow">Laravel PDF Package</p>
+          <h1>Browser-grade PDFs without leaving Laravel.</h1>
+          <p class="lede">
+            Canio is for the documents where browser-real layout, JavaScript execution,
+            explicit readiness, and operational rendering matter more than minimum-work HTML-to-PDF conversion.
+          </p>
+          <div class="cta-row">
+            <a class="button button-primary" href="./install/">Install Canio</a>
+            <a class="button button-secondary" href="https://github.com/oxhq/canio/releases/tag/v1.0.0">View v1.0.0</a>
+          </div>
+          <pre class="code-block"><code>composer require oxhq/canio
+php artisan canio:install</code></pre>
+        </section>
+
+        <section class="grid">
+          <article class="card">
+            <h2>Why it exists</h2>
+            <p>Classic engines are fine for simple static HTML. Canio exists for browser-real documents where that approximation breaks down.</p>
+          </article>
+          <article class="card">
+            <h2>What it does</h2>
+            <p>It renders through Stagehand, runs JavaScript before capture, supports explicit readiness, and keeps artifacts for debugging and replay.</p>
+          </article>
+          <article class="card">
+            <h2>Where it wins</h2>
+            <p>Canio is strongest in the lane of fidelity, JavaScript capability, and browser-grade operational rendering for Laravel apps.</p>
+          </article>
+        </section>
+
+        <section class="comparison">
+          <div>
+            <p class="eyebrow">Positioning</p>
+            <h2>Choose Canio when browser behavior matters.</h2>
+          </div>
+          <div class="comparison-grid">
+            <div class="comparison-card">
+              <h3>Use Canio</h3>
+              <ul>
+                <li>Real Chromium layout</li>
+                <li>JavaScript before capture</li>
+                <li><code>window.__CANIO_READY__</code> support</li>
+                <li>Artifacts, jobs, replay, and runtime ops</li>
+              </ul>
+            </div>
+            <div class="comparison-card">
+              <h3>Use smaller engines</h3>
+              <ul>
+                <li>Very simple static documents</li>
+                <li>Lowest uncached latency matters most</li>
+                <li>Browser execution is unnecessary</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="links">
+          <a class="link-card" href="./install/">
+            <span class="link-label">Install</span>
+            <strong>Package install, runtime setup, and first render</strong>
+          </a>
+          <a class="link-card" href="./deploy/">
+            <span class="link-label">Deploy</span>
+            <strong>Production guidance for embedded and remote runtimes</strong>
+          </a>
+          <a class="link-card" href="https://github.com/oxhq/canio/blob/main/docs/benchmark-summary.md">
+            <span class="link-label">Benchmarks</span>
+            <strong>Fidelity, fairness, and JavaScript-capability summary</strong>
+          </a>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

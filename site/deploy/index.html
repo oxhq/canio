@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Deploy Canio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../styles.css">
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="topbar">
+        <a class="brand" href="../">Canio</a>
+        <nav class="nav">
+          <a href="../install/">Install</a>
+          <a href="./">Deploy</a>
+          <a href="https://github.com/oxhq/canio">GitHub</a>
+        </nav>
+      </header>
+      <main class="content-page">
+        <p class="eyebrow">Deploy</p>
+        <h1>Choose the right runtime shape for production.</h1>
+
+        <h2>Embedded</h2>
+        <p>Use embedded mode when the Laravel host can run Chromium locally and you want the shortest path from install to first successful render.</p>
+        <pre class="code-block"><code>CANIO_RUNTIME_MODE=embedded
+CANIO_RUNTIME_AUTO_INSTALL=true
+CANIO_RUNTIME_AUTO_START=true
+CANIO_RUNTIME_STATE_PATH=/var/lib/canio
+CANIO_RUNTIME_LOG_PATH=/var/log/canio/stagehand.log</code></pre>
+
+        <h2>Remote</h2>
+        <p>Use remote mode when you want Stagehand isolated, shared, or independently scaled from the Laravel app.</p>
+        <pre class="code-block"><code>CANIO_RUNTIME_MODE=remote
+CANIO_RUNTIME_BASE_URL=http://stagehand.internal:9514
+CANIO_RUNTIME_STARTUP_TIMEOUT=30</code></pre>
+
+        <h2>Operational checks</h2>
+        <ul>
+          <li>Make Chromium availability explicit on the runtime host.</li>
+          <li>Persist runtime state if artifacts, jobs, and replay matter.</li>
+          <li>Route Stagehand logs into your normal logging pipeline.</li>
+          <li>Only set <code>CANIO_CHROMIUM_NO_SANDBOX=true</code> when the environment requires it.</li>
+        </ul>
+
+        <h2>Full guide</h2>
+        <p>
+          Read the complete production guide in
+          <a href="https://github.com/oxhq/canio/blob/main/docs/deployment.md">docs/deployment.md</a>.
+        </p>
+      </main>
+    </div>
+  </body>
+</html>

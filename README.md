@@ -40,6 +40,8 @@ By default, Canio runs in `embedded` mode:
 
 Full installation, runtime modes, and package API live in [packages/laravel/README.md](packages/laravel/README.md).
 
+Public docs and install guide: [oxhq.github.io/canio](https://oxhq.github.io/canio/)
+
 ## Product Positioning
 
 The claim this repository supports is narrow on purpose:
@@ -76,9 +78,11 @@ Cloud is an optional paid layer on top of the package. It is not part of the req
 
 ## Documentation
 
+- Public docs: [oxhq.github.io/canio](https://oxhq.github.io/canio/)
 - Package install and usage: [packages/laravel/README.md](packages/laravel/README.md)
 - Launch announcement: [docs/announcements/v1.0.0.md](docs/announcements/v1.0.0.md)
 - Public benchmark summary: [docs/benchmark-summary.md](docs/benchmark-summary.md)
+- Production deployment guide: [docs/deployment.md](docs/deployment.md)
 - Contributor setup: [docs/development.md](docs/development.md)
 - Example app: [examples/laravel-app/README.md](examples/laravel-app/README.md)
 - Architecture notes: [docs/architecture.md](docs/architecture.md)

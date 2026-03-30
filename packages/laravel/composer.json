@@ -1,14 +1,17 @@
 {
   "name": "oxhq/canio",
-  "description": "Opinionated PDF and document execution engine for Laravel powered by Stagehand",
+  "description": "Browser-grade PDF and document rendering for Laravel powered by Stagehand",
   "type": "library",
   "license": "MIT",
+  "homepage": "https://oxhq.github.io/canio/",
   "keywords": [
     "laravel",
     "pdf",
     "documents",
     "chromium",
-    "stagehand"
+    "stagehand",
+    "browser-rendering",
+    "high-fidelity"
   ],
   "authors": [
     {
@@ -17,6 +20,7 @@
     }
   ],
   "support": {
+    "docs": "https://oxhq.github.io/canio/",
     "issues": "https://github.com/oxhq/canio/issues",
     "source": "https://github.com/oxhq/canio"
   },

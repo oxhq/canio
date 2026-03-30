@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Install Canio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../styles.css">
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="topbar">
+        <a class="brand" href="../">Canio</a>
+        <nav class="nav">
+          <a href="./">Install</a>
+          <a href="../deploy/">Deploy</a>
+          <a href="https://github.com/oxhq/canio">GitHub</a>
+        </nav>
+      </header>
+      <main class="content-page">
+        <p class="eyebrow">Install</p>
+        <h1>Install Canio from Packagist.</h1>
+        <pre class="code-block"><code>composer require oxhq/canio
+php artisan canio:install</code></pre>
+        <p>
+          The install command publishes config, downloads the matching Stagehand binary,
+          verifies checksums, and runs a local doctor check.
+        </p>
+
+        <h2>First render</h2>
+        <pre class="code-block"><code>use Oxhq\Canio\Facades\Canio;
+
+return Canio::view('pdf.invoice', ['invoice' =&gt; $invoice])
+    -&gt;profile('invoice')
+    -&gt;title('Invoice #123')
+    -&gt;stream('invoice.pdf');</code></pre>
+
+        <h2>What happens by default</h2>
+        <ul>
+          <li>Canio runs in <code>embedded</code> mode unless you configure otherwise.</li>
+          <li>The package auto-starts the local runtime on first render when needed.</li>
+          <li>The Laravel-facing API stays native: <code>view()</code>, <code>html()</code>, and <code>url()</code>.</li>
+        </ul>
+
+        <h2>Next steps</h2>
+        <ul>
+          <li>Read the <a href="../deploy/">deployment guide</a> before production rollout.</li>
+          <li>Check the <a href="https://github.com/oxhq/canio/blob/main/packages/laravel/README.md">full package README</a> for commands and operations.</li>
+        </ul>
+      </main>
+    </div>
+  </body>
+</html>
