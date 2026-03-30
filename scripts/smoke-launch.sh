@@ -8,6 +8,7 @@ PACKAGE_SOURCE_MODE="${CANIO_PACKAGE_SOURCE_MODE:-vcs}"
 PACKAGE_SOURCE_URL="${CANIO_PACKAGE_SOURCE_URL:-}"
 RUNTIME_RELEASE_VERSION="${CANIO_RUNTIME_RELEASE_VERSION:-v1.0.0}"
 RUNTIME_RELEASE_REPOSITORY="${CANIO_RUNTIME_RELEASE_REPOSITORY:-oxhq/canio}"
+RUNTIME_RELEASE_SOURCE="${CANIO_RUNTIME_RELEASE_SOURCE:-local}"
 RUNTIME_RELEASE_BASE_URL="${CANIO_RUNTIME_RELEASE_BASE_URL:-}"
 RUNTIME_RELEASE_BINARY_PATH="${CANIO_RELEASE_SMOKE_BINARY:-}"
 LARAVEL_VERSION="${CANIO_LARAVEL_VERSION:-^12.0}"
@@ -115,6 +116,46 @@ build_release_asset() {
 
   write_checksum_file "$asset_dir" "$asset_name"
   printf '%s\n' "$asset_path"
+}
+
+download_release_assets() {
+  local release_root="$1"
+  local asset_os="$2"
+  local asset_arch="$3"
+  local asset_ext="$4"
+  local asset_name="stagehand_${RUNTIME_RELEASE_VERSION}_${asset_os}_${asset_arch}${asset_ext}"
+  local asset_dir="$release_root/$RUNTIME_RELEASE_REPOSITORY/releases/download/$RUNTIME_RELEASE_VERSION"
+  local asset_path="$asset_dir/$asset_name"
+  local checksums_path="$asset_dir/checksums.txt"
+  local upstream_base="${RUNTIME_RELEASE_BASE_URL:-https://github.com}"
+  local upstream_release_url="$upstream_base/$RUNTIME_RELEASE_REPOSITORY/releases/download/$RUNTIME_RELEASE_VERSION"
+
+  mkdir -p "$asset_dir"
+
+  curl -fsSL "$upstream_release_url/$asset_name" -o "$asset_path"
+  curl -fsSL "$upstream_release_url/checksums.txt" -o "$checksums_path"
+
+  printf '%s\n' "$asset_path"
+}
+
+prepare_release_asset() {
+  local release_root="$1"
+  local asset_os="$2"
+  local asset_arch="$3"
+  local asset_ext="$4"
+
+  case "$RUNTIME_RELEASE_SOURCE" in
+    local)
+      build_release_asset "$release_root" "$asset_os" "$asset_arch" "$asset_ext"
+      ;;
+    github)
+      download_release_assets "$release_root" "$asset_os" "$asset_arch" "$asset_ext"
+      ;;
+    *)
+      echo "Unsupported CANIO_RUNTIME_RELEASE_SOURCE: $RUNTIME_RELEASE_SOURCE" >&2
+      exit 1
+      ;;
+  esac
 }
 
 prepare_package_repo() {
@@ -367,7 +408,7 @@ main() {
     package_source_url="file://$package_repo_dir"
   fi
 
-  build_release_asset "$release_root" "$asset_os" "$asset_arch" "$asset_ext" >/dev/null
+  prepare_release_asset "$release_root" "$asset_os" "$asset_arch" "$asset_ext" >/dev/null
 
   "$PYTHON_BIN" -m http.server "$RELEASE_SMOKE_PORT" \
     --bind 127.0.0.1 \

@@ -167,10 +167,21 @@ jobs:
       - launch-smoke
       - checksums
     steps:
-      - name: Download release artifacts
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download stagehand artifacts
         uses: actions/download-artifact@v4
         with:
-          path: dist
+          pattern: stagehand_${{ github.ref_name }}_*
+          merge-multiple: true
+          path: dist/stagehand
+
+      - name: Download checksum artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: checksums
+          path: dist/checksums
 
       - name: Flatten release payload
         run: |
@@ -180,6 +191,8 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: docs/releases/${{ github.ref_name }}.md
+          fail_on_unmatched_files: true
           files: release/*
 
   publish-stagehand-image:
