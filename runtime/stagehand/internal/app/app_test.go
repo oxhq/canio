@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -324,13 +325,46 @@ func testRuntimeConfig(t *testing.T) config.RuntimeConfig {
 	if os.Getenv("CI") != "" {
 		cfg.DisableSandbox = true
 	}
-	cfg.StateDir = t.TempDir()
-	cfg.UserDataDir = t.TempDir()
+	cfg.StateDir = makeRetriableTempDir(t, "stagehand-state-")
+	cfg.UserDataDir = makeRetriableTempDir(t, "stagehand-user-data-")
 	cfg.BrowserPoolSize = 1
 	cfg.BrowserPoolWarm = 1
 	cfg.JobWorkerCount = 1
 
 	return cfg
+}
+
+func makeRetriableTempDir(t *testing.T, pattern string) string {
+	t.Helper()
+
+	dir, err := os.MkdirTemp("", pattern)
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if cleanupErr := removeAllWithRetry(dir, 10, 100*time.Millisecond); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
+			t.Logf("temp dir cleanup for %s failed: %v", dir, cleanupErr)
+		}
+	})
+
+	return dir
+}
+
+func removeAllWithRetry(path string, attempts int, delay time.Duration) error {
+	var lastErr error
+
+	for attempt := 0; attempt < attempts; attempt++ {
+		if err := os.RemoveAll(path); err == nil || errors.Is(err, os.ErrNotExist) {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		time.Sleep(delay)
+	}
+
+	return lastErr
 }
 
 type fakeRenderer struct {
