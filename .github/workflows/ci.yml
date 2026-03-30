@@ -6,15 +6,12 @@ on:
     branches:
       - main
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
   release-surface:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate release surfaces
         run: ./scripts/check-release-surface.sh
@@ -31,7 +28,7 @@ jobs:
         working-directory: packages/laravel
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -53,16 +50,16 @@ jobs:
         working-directory: runtime/stagehand
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: runtime/stagehand/go.mod
           cache-dependency-path: runtime/stagehand/go.sum
 
       - name: Run runtime tests
-        run: go test ./... -timeout 120s
+        run: go test ./... -timeout 120s -p 1
 
       - name: Build stagehand
         run: go build ./cmd/stagehand
@@ -71,13 +68,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build Stagehand image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/stagehand.Dockerfile
@@ -87,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -97,19 +94,19 @@ jobs:
           extensions: intl, zip
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: runtime/stagehand/go.mod
           cache-dependency-path: runtime/stagehand/go.sum
 
       - name: Setup Chrome
         id: setup-chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
 
       - name: Run launch smoke
         env:
           CANIO_CHROMIUM_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
           CANIO_CHROMIUM_NO_SANDBOX: "true"
           CANIO_PACKAGE_SOURCE_MODE: vcs
-          CANIO_RUNTIME_RELEASE_VERSION: v1.0.0
+          CANIO_RUNTIME_RELEASE_VERSION: v1.0.1
         run: ./scripts/smoke-launch.sh

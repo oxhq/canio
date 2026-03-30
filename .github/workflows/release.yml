@@ -9,15 +9,12 @@ permissions:
   contents: write
   packages: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate release surfaces
         run: ./scripts/check-release-surface.sh "${GITHUB_REF_NAME}"
@@ -30,7 +27,7 @@ jobs:
           extensions: intl, zip
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: runtime/stagehand/go.mod
           cache-dependency-path: runtime/stagehand/go.sum
@@ -45,7 +42,7 @@ jobs:
 
       - name: Run Go tests
         working-directory: runtime/stagehand
-        run: go test ./... -timeout 120s
+        run: go test ./... -timeout 120s -p 1
 
   build-binaries:
     runs-on: ubuntu-latest
@@ -74,10 +71,10 @@ jobs:
             ext: ".exe"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: runtime/stagehand/go.mod
           cache-dependency-path: runtime/stagehand/go.sum
@@ -93,7 +90,7 @@ jobs:
           echo "ASSET=${ASSET}" >> "$GITHUB_ENV"
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ASSET }}
           path: runtime/stagehand/dist/${{ env.ASSET }}
@@ -103,7 +100,7 @@ jobs:
     needs: build-binaries
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -113,17 +110,17 @@ jobs:
           extensions: intl, zip
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: runtime/stagehand/go.mod
           cache-dependency-path: runtime/stagehand/go.sum
 
       - name: Setup Chrome
         id: setup-chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
 
       - name: Download release binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: stagehand_${{ github.ref_name }}_*
           merge-multiple: true
@@ -146,7 +143,7 @@ jobs:
     needs: build-binaries
     steps:
       - name: Download binary artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: stagehand_*
           merge-multiple: true
@@ -158,7 +155,7 @@ jobs:
           sha256sum stagehand_* > checksums.txt
 
       - name: Upload checksum artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: checksums
           path: dist/checksums.txt
@@ -171,17 +168,17 @@ jobs:
       - checksums
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download stagehand artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: stagehand_${{ github.ref_name }}_*
           merge-multiple: true
           path: dist/stagehand
 
       - name: Download checksum artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: checksums
           path: dist/checksums
@@ -192,31 +189,45 @@ jobs:
           find dist -type f -exec cp {} release/ \;
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: docs/releases/${{ github.ref_name }}.md
-          fail_on_unmatched_files: true
-          files: release/*
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          test -n "$(find release -type f -print -quit)"
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" release/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+            gh release edit "${GITHUB_REF_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --notes-file "docs/releases/${GITHUB_REF_NAME}.md" \
+              --title "${GITHUB_REF_NAME}"
+          else
+            gh release create "${GITHUB_REF_NAME}" release/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --notes-file "docs/releases/${GITHUB_REF_NAME}.md" \
+              --title "${GITHUB_REF_NAME}" \
+              --verify-tag
+          fi
 
   publish-stagehand-image:
     runs-on: ubuntu-latest
     needs: verify
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Stagehand image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/stagehand.Dockerfile
@@ -232,7 +243,7 @@ jobs:
       - publish-stagehand-image
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -242,14 +253,14 @@ jobs:
           extensions: intl, zip
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: runtime/stagehand/go.mod
           cache-dependency-path: runtime/stagehand/go.sum
 
       - name: Setup Chrome
         id: setup-chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
 
       - name: Verify release distribution
         env:

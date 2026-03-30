@@ -2,6 +2,18 @@
 
 All notable changes to Canio are documented in this file.
 
+## [1.0.1] - 2026-03-29
+
+First post-launch patch release.
+
+Highlights:
+
+- refreshed GitHub Actions workflows onto Node 24-compatible action versions
+- added a public docs site at `https://oxhq.github.io/canio/`
+- added a production deployment guide for embedded versus remote runtime modes
+- added a release verification lane for tag, split, assets, and Packagist distribution
+- aligned package metadata so Packagist can point at the public docs surface
+
 ## [1.0.0] - 2026-03-29
 
 First public GA launch of the Laravel package.

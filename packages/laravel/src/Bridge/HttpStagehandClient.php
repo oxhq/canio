@@ -15,6 +15,7 @@ use Oxhq\Canio\Data\RenderSpec;
 use Oxhq\Canio\Support\RequestSigner;
 use Oxhq\Canio\Support\SseDecoder;
 use Oxhq\Canio\Support\NullStagehandRuntimeBootstrapper;
+use Oxhq\Canio\Support\StagehandRuntimeUrl;
 use RuntimeException;
 use stdClass;
 
@@ -215,7 +216,7 @@ final class HttpStagehandClient implements StagehandClient
 
     private function baseUrl(): string
     {
-        return rtrim((string) ($this->config['base_url'] ?? 'http://127.0.0.1:9514'), '/');
+        return StagehandRuntimeUrl::baseUrl($this->config);
     }
 
     private function timeout(): int

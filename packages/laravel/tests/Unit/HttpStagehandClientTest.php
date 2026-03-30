@@ -60,6 +60,28 @@ it('bootstraps the runtime before issuing requests', function () {
         ->and($bootstrapper->calls)->toBe(1);
 });
 
+it('derives the runtime base url from host and port when base_url is absent', function () {
+    $bootstrapper = new RecordingRuntimeBootstrapper;
+
+    Http::fake([
+        'http://127.0.0.1:9714/v1/jobs*' => Http::response([
+            'contractVersion' => 'canio.stagehand.jobs.v1',
+            'count' => 0,
+            'items' => [],
+        ]),
+    ]);
+
+    $client = new HttpStagehandClient([
+        'host' => '127.0.0.1',
+        'port' => 9714,
+    ], $bootstrapper);
+
+    expect($client->jobs())->toBeArray()
+        ->and($bootstrapper->calls)->toBe(1);
+
+    Http::assertSent(fn ($request) => $request->url() === 'http://127.0.0.1:9714/v1/jobs?limit=20');
+});
+
 final class RecordingRuntimeBootstrapper implements StagehandRuntimeBootstrapper
 {
     public int $calls = 0;

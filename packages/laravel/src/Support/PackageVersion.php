@@ -6,7 +6,7 @@ namespace Oxhq\Canio\Support;
 
 final class PackageVersion
 {
-    public const TAG = 'v1.0.0';
+    public const TAG = 'v1.0.1';
 
     public static function label(): string
     {

@@ -6,13 +6,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PACKAGE_CONSTRAINT="${CANIO_PACKAGE_CONSTRAINT:-^1.0}"
 PACKAGE_SOURCE_MODE="${CANIO_PACKAGE_SOURCE_MODE:-vcs}"
 PACKAGE_SOURCE_URL="${CANIO_PACKAGE_SOURCE_URL:-}"
-RUNTIME_RELEASE_VERSION="${CANIO_RUNTIME_RELEASE_VERSION:-v1.0.0}"
+RUNTIME_RELEASE_VERSION="${CANIO_RUNTIME_RELEASE_VERSION:-v1.0.1}"
 RUNTIME_RELEASE_REPOSITORY="${CANIO_RUNTIME_RELEASE_REPOSITORY:-oxhq/canio}"
 RUNTIME_RELEASE_SOURCE="${CANIO_RUNTIME_RELEASE_SOURCE:-local}"
 RUNTIME_RELEASE_BASE_URL="${CANIO_RUNTIME_RELEASE_BASE_URL:-}"
 RUNTIME_RELEASE_BINARY_PATH="${CANIO_RELEASE_SMOKE_BINARY:-}"
 LARAVEL_VERSION="${CANIO_LARAVEL_VERSION:-^12.0}"
-RELEASE_SMOKE_PORT="${CANIO_RELEASE_SMOKE_PORT:-9099}"
+RELEASE_SMOKE_PORT="${CANIO_RELEASE_SMOKE_PORT:-}"
+CANIO_RUNTIME_PORT_VALUE="${CANIO_RUNTIME_PORT:-}"
 KEEP_WORKDIR="${CANIO_SMOKE_KEEP_WORKDIR:-0}"
 
 PHP_BIN="${CANIO_PHP_BIN:-}"
@@ -85,6 +86,17 @@ trap cleanup EXIT INT TERM
 
 create_temp_dir() {
   mktemp -d "${TMPDIR:-/tmp}/canio-launch-smoke.XXXXXX"
+}
+
+resolve_free_port() {
+  "$PYTHON_BIN" - <<'PY'
+import socket
+
+sock = socket.socket()
+sock.bind(("127.0.0.1", 0))
+print(sock.getsockname()[1])
+sock.close()
+PY
 }
 
 write_checksum_file() {
@@ -217,6 +229,8 @@ append_env() {
   local asset_os="$4"
   local asset_arch="$5"
   local asset_ext="$6"
+  local release_smoke_port="$7"
+  local runtime_port="$8"
 
   cat >> "$app_dir/.env" <<EOF
 
@@ -225,9 +239,10 @@ CANIO_RUNTIME_MODE=embedded
 CANIO_RUNTIME_AUTO_START=true
 CANIO_RUNTIME_AUTO_INSTALL=true
 CANIO_RUNTIME_RELEASE_REPOSITORY=$RUNTIME_RELEASE_REPOSITORY
-CANIO_RUNTIME_RELEASE_BASE_URL=http://127.0.0.1:$RELEASE_SMOKE_PORT
+CANIO_RUNTIME_RELEASE_BASE_URL=http://127.0.0.1:$release_smoke_port
 CANIO_RUNTIME_RELEASE_VERSION=$RUNTIME_RELEASE_VERSION
-CANIO_RUNTIME_PORT=${CANIO_RUNTIME_PORT:-9514}
+CANIO_RUNTIME_BASE_URL=http://127.0.0.1:$runtime_port
+CANIO_RUNTIME_PORT=$runtime_port
 CANIO_RUNTIME_STATE_PATH=$runtime_state
 CANIO_RUNTIME_LOG_PATH=$runtime_log
 CANIO_CHROMIUM_USER_DATA_DIR=$TEMP_DIR/chromium-profile
@@ -396,11 +411,19 @@ main() {
   local asset_ext=""
   local package_source_url="$PACKAGE_SOURCE_URL"
   local launch_pdf="$TEMP_DIR/canio-launch-smoke.pdf"
+  local release_smoke_port="${RELEASE_SMOKE_PORT:-}"
+  local runtime_port="${CANIO_RUNTIME_PORT_VALUE:-}"
 
   asset_os="$(resolve_os)"
   asset_arch="$(resolve_arch)"
   if [[ "$asset_os" == "windows" ]]; then
     asset_ext=".exe"
+  fi
+  if [[ -z "$release_smoke_port" ]]; then
+    release_smoke_port="$(resolve_free_port)"
+  fi
+  if [[ -z "$runtime_port" ]]; then
+    runtime_port="$(resolve_free_port)"
   fi
 
   if [[ "$PACKAGE_SOURCE_MODE" == "vcs" && -z "$package_source_url" ]]; then
@@ -410,17 +433,17 @@ main() {
 
   prepare_release_asset "$release_root" "$asset_os" "$asset_arch" "$asset_ext" >/dev/null
 
-  "$PYTHON_BIN" -m http.server "$RELEASE_SMOKE_PORT" \
+  "$PYTHON_BIN" -m http.server "$release_smoke_port" \
     --bind 127.0.0.1 \
     --directory "$release_root" \
     >"$TEMP_DIR/release-server.log" 2>&1 &
   SERVER_PID=$!
 
-  wait_for_http "http://127.0.0.1:$RELEASE_SMOKE_PORT/$RUNTIME_RELEASE_REPOSITORY/releases/download/$RUNTIME_RELEASE_VERSION/checksums.txt"
+  wait_for_http "http://127.0.0.1:$release_smoke_port/$RUNTIME_RELEASE_REPOSITORY/releases/download/$RUNTIME_RELEASE_VERSION/checksums.txt"
 
   create_laravel_app "$app_dir"
   require_canio_from_source "$app_dir" "$package_source_url"
-  append_env "$app_dir" "$runtime_state" "$runtime_log" "$asset_os" "$asset_arch" "$asset_ext"
+  append_env "$app_dir" "$runtime_state" "$runtime_log" "$asset_os" "$asset_arch" "$asset_ext" "$release_smoke_port" "$runtime_port"
 
   probe_runtime_checksum_failure "$app_dir" "$asset_os" "$asset_arch" "$asset_ext"
   restore_good_checksums "$asset_os" "$asset_arch" "$asset_ext"
@@ -442,7 +465,8 @@ main() {
   echo "package_source_mode=$PACKAGE_SOURCE_MODE"
   echo "package_source_url=${package_source_url:-packagist}"
   echo "runtime_release_version=$RUNTIME_RELEASE_VERSION"
-  echo "runtime_release_base_url=http://127.0.0.1:$RELEASE_SMOKE_PORT"
+  echo "runtime_release_base_url=http://127.0.0.1:$release_smoke_port"
+  echo "runtime_port=$runtime_port"
   echo "pdf_path=$launch_pdf"
 }
 

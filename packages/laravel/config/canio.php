@@ -21,7 +21,7 @@ return [
         'binary' => env('CANIO_RUNTIME_BINARY', 'stagehand'),
         'install_path' => env('CANIO_RUNTIME_INSTALL_PATH', 'bin/stagehand'),
         'working_directory' => env('CANIO_RUNTIME_WORKING_DIRECTORY', base_path()),
-        'base_url' => env('CANIO_RUNTIME_BASE_URL', 'http://127.0.0.1:9514'),
+        'base_url' => env('CANIO_RUNTIME_BASE_URL'),
         'timeout' => (int) env('CANIO_RUNTIME_TIMEOUT', 30),
         'auto_start' => (bool) env('CANIO_RUNTIME_AUTO_START', true),
         'auto_install' => (bool) env('CANIO_RUNTIME_AUTO_INSTALL', true),

@@ -10,15 +10,12 @@ on:
 permissions:
   contents: read
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
   split-laravel-package:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -33,7 +30,15 @@ jobs:
           echo "SPLIT_REPO_REMOTE_URL=https://x-access-token:${SPLIT_PUSH_TOKEN}@github.com/oxhq/canio-laravel.git" >> "$GITHUB_ENV"
 
       - name: Validate release surfaces
-        run: ./scripts/check-release-surface.sh
+        env:
+          GITHUB_REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            ./scripts/check-release-surface.sh "$GITHUB_REF_NAME"
+          else
+            ./scripts/check-release-surface.sh
+          fi
 
       - name: Publish Laravel split repository
         env:

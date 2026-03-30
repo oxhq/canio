@@ -14,7 +14,7 @@ final class StagehandHealthProbe
      */
     public function isReady(array $config): bool
     {
-        $baseUrl = rtrim((string) ($config['base_url'] ?? 'http://127.0.0.1:9514'), '/');
+        $baseUrl = StagehandRuntimeUrl::baseUrl($config);
         $auth = $this->authHeaders($config);
 
         try {

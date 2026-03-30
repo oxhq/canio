@@ -5,9 +5,6 @@ on:
   schedule:
     - cron: "0 9 * * *"
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 permissions:
   contents: read
 
@@ -16,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -26,14 +23,14 @@ jobs:
           extensions: intl, zip
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: runtime/stagehand/go.mod
           cache-dependency-path: runtime/stagehand/go.sum
 
       - name: Setup Chrome
         id: setup-chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
 
       - name: Resolve Packagist version
         run: |
