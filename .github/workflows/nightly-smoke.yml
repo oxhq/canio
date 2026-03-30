@@ -1,0 +1,52 @@
+name: Nightly Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  packagist-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          coverage: none
+          extensions: intl, zip
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: runtime/stagehand/go.mod
+          cache-dependency-path: runtime/stagehand/go.sum
+
+      - name: Setup Chrome
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Resolve Packagist version
+        run: |
+          PACKAGE_VERSION="$(curl -fsSL https://repo.packagist.org/p2/oxhq/canio.json | jq -r '.packages["oxhq/canio"] | map(select(.version | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .[0].version')"
+          if [[ -z "$PACKAGE_VERSION" || "$PACKAGE_VERSION" == "null" ]]; then
+            echo "Unable to resolve a stable Packagist version for oxhq/canio" >&2
+            exit 1
+          fi
+
+          echo "CANIO_PACKAGE_CONSTRAINT=$PACKAGE_VERSION" >> "$GITHUB_ENV"
+          echo "CANIO_RUNTIME_RELEASE_VERSION=$PACKAGE_VERSION" >> "$GITHUB_ENV"
+
+      - name: Run Packagist smoke
+        env:
+          CANIO_CHROMIUM_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          CANIO_CHROMIUM_NO_SANDBOX: "true"
+          CANIO_PACKAGE_SOURCE_MODE: packagist
+          CANIO_RUNTIME_RELEASE_SOURCE: github
+        run: ./scripts/smoke-launch.sh

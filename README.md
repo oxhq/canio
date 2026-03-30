@@ -77,6 +77,7 @@ Cloud is an optional paid layer on top of the package. It is not part of the req
 ## Documentation
 
 - Package install and usage: [packages/laravel/README.md](packages/laravel/README.md)
+- Launch announcement: [docs/announcements/v1.0.0.md](docs/announcements/v1.0.0.md)
 - Public benchmark summary: [docs/benchmark-summary.md](docs/benchmark-summary.md)
 - Contributor setup: [docs/development.md](docs/development.md)
 - Example app: [examples/laravel-app/README.md](examples/laravel-app/README.md)
