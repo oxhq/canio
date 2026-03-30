@@ -16,14 +16,6 @@ composer require oxhq/canio
 php artisan canio:install
 ```
 
-If Packagist has not indexed `oxhq/canio` yet in your environment, use the public split repository as a temporary Composer VCS source:
-
-```bash
-composer config repositories.canio vcs https://github.com/oxhq/canio-laravel.git
-composer require oxhq/canio:^1.0
-php artisan canio:install
-```
-
 The second command is recommended for deployment and validation because it:
 
 - publishes the default config
