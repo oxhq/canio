@@ -46,6 +46,14 @@ final class CanioManager
         return PendingRender::forUrl($this, $url, $this->defaults());
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function template(string $slug, array $data = []): PendingRender
+    {
+        return PendingRender::forTemplate($this, $slug, $data, $this->defaults());
+    }
+
     public function render(PendingRender $render): RenderResult
     {
         $spec = $this->prepareRenderSpec($render);
@@ -343,6 +351,10 @@ final class CanioManager
         $source = is_array($attributes['source'] ?? null) ? $attributes['source'] : [];
         $type = (string) ($source['type'] ?? '');
         $payload = is_array($source['payload'] ?? null) ? $source['payload'] : [];
+
+        if ($type === 'cloud_template' && (string) ($this->config['cloud']['mode'] ?? 'off') !== 'managed') {
+            throw new \RuntimeException('Canio cloud templates require cloud.mode=managed.');
+        }
 
         if ($type === 'view') {
             $view = (string) ($payload['view'] ?? '');

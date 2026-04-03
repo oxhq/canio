@@ -78,6 +78,21 @@ final class PendingRender
         ], $defaults);
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $defaults
+     */
+    public static function forTemplate(CanioManager $manager, string $slug, array $data, array $defaults): self
+    {
+        return self::make($manager, [
+            'type' => 'cloud_template',
+            'payload' => [
+                'template' => $slug,
+                'data' => $data,
+            ],
+        ], $defaults);
+    }
+
     public function profile(string $profile): self
     {
         $this->profile = $profile;
@@ -316,6 +331,24 @@ final class PendingRender
     public function correlationId(string $scope, string $value): self
     {
         $this->correlation[$scope] = $value;
+
+        return $this;
+    }
+
+    public function version(string $version): self
+    {
+        if ($this->source['type'] === 'cloud_template') {
+            $this->source['payload']['version'] = $version;
+        }
+
+        return $this;
+    }
+
+    public function release(string $release): self
+    {
+        if ($this->source['type'] === 'cloud_template') {
+            $this->source['payload']['release'] = $release;
+        }
 
         return $this;
     }

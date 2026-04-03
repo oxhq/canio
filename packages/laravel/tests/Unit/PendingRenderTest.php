@@ -46,3 +46,20 @@ it('builds a stagehand render spec from the fluent api', function () {
         ->and($spec['queue']['connection'])->toBe('redis')
         ->and($spec['queue']['queue'])->toBe('pdfs');
 });
+
+it('builds a cloud template render spec with version and release selectors', function () {
+    /** @var CanioManager $canio */
+    $canio = app(CanioManager::class);
+
+    $spec = $canio->template('invoice.default', ['invoice' => 123])
+        ->version('v3')
+        ->release('production-current')
+        ->toRenderSpec()
+        ->toArray();
+
+    expect($spec['source']['type'])->toBe('cloud_template')
+        ->and($spec['source']['payload']['template'])->toBe('invoice.default')
+        ->and($spec['source']['payload']['data'])->toBe(['invoice' => 123])
+        ->and($spec['source']['payload']['version'])->toBe('v3')
+        ->and($spec['source']['payload']['release'])->toBe('production-current');
+});

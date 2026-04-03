@@ -154,3 +154,55 @@ it('uses the managed cloud runtime without requiring a local stagehand base url'
             && $request->hasHeader('X-Canio-Environment', 'production');
     });
 });
+
+it('sends cloud template sources to the managed cloud runtime', function () {
+    Storage::fake('local');
+
+    config()->set('canio.runtime.base_url', null);
+    config()->set('canio.cloud.mode', 'managed');
+    config()->set('canio.cloud.base_url', 'https://cloud.canio.test');
+    config()->set('canio.cloud.token', 'managed-token-123');
+    config()->set('canio.cloud.project', 'project-beta');
+    config()->set('canio.cloud.environment', 'production');
+
+    $pdfBytes = "%PDF-1.4\ntemplate\n";
+
+    Http::fake([
+        'https://cloud.canio.test/api/runtime/v1/renders' => Http::response([
+            'contractVersion' => 'canio.stagehand.render-result.v1',
+            'requestId' => 'req-template',
+            'jobId' => 'job-template',
+            'status' => 'completed',
+            'pdf' => [
+                'base64' => base64_encode($pdfBytes),
+                'contentType' => 'application/pdf',
+                'fileName' => 'template.pdf',
+                'bytes' => strlen($pdfBytes),
+            ],
+        ]),
+    ]);
+
+    Canio::template('invoice.default', ['invoice' => 123])
+        ->version('v7')
+        ->release('prod-live')
+        ->save('documents/template.pdf', 'local');
+
+    Storage::disk('local')->assertExists('documents/template.pdf');
+    Http::assertSent(function (Request $request): bool {
+        $payload = $request->data();
+
+        return $request->url() === 'https://cloud.canio.test/api/runtime/v1/renders'
+            && data_get($payload, 'source.type') === 'cloud_template'
+            && data_get($payload, 'source.payload.template') === 'invoice.default'
+            && data_get($payload, 'source.payload.version') === 'v7'
+            && data_get($payload, 'source.payload.release') === 'prod-live'
+            && data_get($payload, 'source.payload.data.invoice') === 123;
+    });
+});
+
+it('fails clearly when using cloud templates outside managed mode', function () {
+    config()->set('canio.cloud.mode', 'off');
+
+    expect(fn () => Canio::template('invoice.default', ['invoice' => 123])->render())
+        ->toThrow(RuntimeException::class, 'Canio cloud templates require cloud.mode=managed.');
+});
