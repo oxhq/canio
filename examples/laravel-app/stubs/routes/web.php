@@ -154,13 +154,11 @@ Route::prefix('/canio/cloud')->group(function () use ($exampleInvoice): void {
             ->title(sprintf('Canio Cloud %s Async Job', ucfirst($mode)))
             ->debug()
             ->watch()
-            ->queue('redis', 'pdfs')
             ->dispatch();
 
         return response()->json([
             'mode' => $mode,
-            'job' => $job->toArray(),
-            'jobUrl' => route('invoices.job', ['job' => $job->id()]),
+            'jobId' => $job->id(),
         ]);
     });
 });

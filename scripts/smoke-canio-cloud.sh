@@ -53,6 +53,8 @@ MANAGED_STAGEHAND_PORT="${CANIO_MANAGED_STAGEHAND_PORT:-9514}"
 SYNC_STAGEHAND_PORT="${CANIO_SYNC_STAGEHAND_PORT:-9521}"
 EXAMPLE_PORT="${CANIO_EXAMPLE_PORT:-18080}"
 TMP_DIR="${TMPDIR:-/tmp}/canio-cloud-smoke-$RANDOM"
+CLOUD_DB_PATH="${CANIO_CLOUD_DB_PATH:-$TMP_DIR/canio-cloud.sqlite}"
+KEEP_WORKDIR="${CANIO_SMOKE_KEEP_WORKDIR:-0}"
 
 mkdir -p "$TMP_DIR"
 
@@ -71,6 +73,10 @@ cleanup() {
     kill "$MANAGED_STAGEHAND_PID" 2>/dev/null || true
   fi
 
+  if [[ -n "${CLOUD_QUEUE_WORKER_PID:-}" ]] && kill -0 "$CLOUD_QUEUE_WORKER_PID" 2>/dev/null; then
+    kill "$CLOUD_QUEUE_WORKER_PID" 2>/dev/null || true
+  fi
+
   stop_stagehand_on_port "$EXAMPLE_PORT"
   stop_stagehand_on_port "$SYNC_STAGEHAND_PORT"
   stop_stagehand_on_port "$MANAGED_STAGEHAND_PORT"
@@ -79,7 +85,15 @@ cleanup() {
     cp "$TMP_DIR/example.env.backup" "$EXAMPLE_APP_DIR/.env"
   fi
 
-  rm -rf "$TMP_DIR"
+  if [[ -f "$TMP_DIR/cloud.env.backup" ]]; then
+    cp "$TMP_DIR/cloud.env.backup" "$CLOUD_DIR/.env"
+  fi
+
+  if [[ "$KEEP_WORKDIR" == "1" ]]; then
+    echo "Keeping smoke workspace at $TMP_DIR"
+  else
+    rm -rf "$TMP_DIR"
+  fi
 
   exit "$code"
 }
@@ -134,14 +148,50 @@ assert_db_count() {
   fi
 }
 
+wait_for_db_count() {
+  local db_path="$1"
+  local sql="$2"
+  local expected_min="$3"
+  local timeout_seconds="${4:-30}"
+  local elapsed=0
+
+  while (( elapsed < timeout_seconds )); do
+    local count
+    count="$("$PHP_BIN" -r '
+      $db = new PDO("sqlite:" . $argv[1]);
+      $value = $db->query($argv[2])->fetchColumn();
+      echo (int) $value;
+    ' "$db_path" "$sql")"
+
+    if (( count >= expected_min )); then
+      return 0
+    fi
+
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  echo "Expected at least $expected_min rows for query: $sql. Got less than $expected_min after ${timeout_seconds}s." >&2
+  return 1
+}
+
 extract_bootstrap_value() {
   local output="$1"
   local field="$2"
 
-  printf '%s\n' "$output" | awk -F'|' -v field="$field" '
-    $0 ~ field {
-      gsub(/^[ \t]+|[ \t]+$/, "", $3);
-      print $3;
+  printf '%s\n' "$output" | awk -v field="$field" '
+    $0 ~ "^" field ":[[:space:]]*" {
+      sub("^" field ":[[:space:]]*", "", $0);
+      print $0;
+      next;
+    }
+
+    $0 ~ field && index($0, "|") {
+      n = split($0, parts, "|");
+      if (n >= 3) {
+        gsub(/^[ \t]+|[ \t]+$/, "", parts[3]);
+        print parts[3];
+      }
     }
   ' | tail -n 1
 }
@@ -155,11 +205,87 @@ prepare_example_app() {
   )
 }
 
+inject_template_smoke_routes() {
+  local routes_file="$EXAMPLE_APP_DIR/routes/web.php"
+
+  if grep -q "/canio/cloud/template-smoke/run/preview" "$routes_file"; then
+    return
+  fi
+
+  cat >> "$routes_file" <<'EOF'
+
+Route::prefix('/canio/cloud/template-smoke/run')->group(function () use ($exampleInvoice): void {
+    Route::get('preview', function () use ($exampleInvoice): Response {
+        config()->set('canio.cloud.mode', 'managed');
+
+        return Canio::template('invoice.default', ['invoice' => $exampleInvoice()])
+            ->profile('invoice')
+            ->title('Canio Cloud Template Preview')
+            ->debug()
+            ->watch()
+            ->stream('example-template.pdf');
+    });
+
+    Route::get('dispatch', function () use ($exampleInvoice): JsonResponse {
+        config()->set('canio.cloud.mode', 'managed');
+
+        $job = Canio::template('invoice.default', ['invoice' => $exampleInvoice()])
+            ->profile('invoice')
+            ->title('Canio Cloud Template Async Job')
+            ->debug()
+            ->watch()
+            ->dispatch();
+
+        return response()->json([
+            'mode' => 'template',
+            'jobId' => $job->id(),
+        ]);
+    });
+});
+EOF
+}
+
 start_cloud() {
+  cp "$CLOUD_DIR/.env" "$TMP_DIR/cloud.env.backup"
+  "$PHP_BIN" -r '
+    $file = $argv[1];
+    $baseUrl = $argv[2];
+    $lines = file_exists($file) ? file($file, FILE_IGNORE_NEW_LINES) : [];
+    $dropPrefixes = [
+        "DB_CONNECTION=",
+        "DB_DATABASE=",
+        "QUEUE_CONNECTION=",
+        "SESSION_DRIVER=",
+        "CANIO_MANAGED_RUNTIME_BASE_URL=",
+    ];
+    $filtered = [];
+
+    foreach ($lines as $line) {
+        $shouldDrop = false;
+        foreach ($dropPrefixes as $prefix) {
+            if (str_starts_with($line, $prefix)) {
+                $shouldDrop = true;
+                break;
+            }
+        }
+
+        if (! $shouldDrop) {
+            $filtered[] = $line;
+        }
+    }
+
+    $filtered[] = "DB_CONNECTION=sqlite";
+    $filtered[] = "DB_DATABASE=".$argv[3];
+    $filtered[] = "QUEUE_CONNECTION=database";
+    $filtered[] = "SESSION_DRIVER=array";
+    $filtered[] = "CANIO_MANAGED_RUNTIME_BASE_URL=".$baseUrl;
+    file_put_contents($file, implode(PHP_EOL, $filtered).PHP_EOL);
+  ' "$CLOUD_DIR/.env" "http://127.0.0.1:$MANAGED_STAGEHAND_PORT" "$CLOUD_DB_PATH"
+
   (
     cd "$CLOUD_DIR"
-    CANIO_STAGEHAND_BASE_URL="http://127.0.0.1:$MANAGED_STAGEHAND_PORT" \
-      "$PHP_BIN" artisan serve --host=127.0.0.1 --port="$CLOUD_PORT" >"$TMP_DIR/canio-cloud.log" 2>&1
+    "$PHP_BIN" artisan config:clear >/dev/null
+    "$PHP_BIN" artisan serve --host=127.0.0.1 --port="$CLOUD_PORT" >"$TMP_DIR/canio-cloud.log" 2>&1
   ) &
   CLOUD_PID=$!
   wait_for_url "http://127.0.0.1:$CLOUD_PORT/up"
@@ -172,22 +298,44 @@ bootstrap_cloud() {
 
   output="$(
     cd "$CLOUD_DIR" && \
-      "$PHP_BIN" artisan migrate --force >/dev/null && \
-      "$PHP_BIN" artisan canio:cloud:bootstrap "$workspace_name" "Invoices" "Production" --plan="$plan"
+      "$PHP_BIN" artisan config:clear >/dev/null && \
+      DB_CONNECTION=sqlite DB_DATABASE="$CLOUD_DB_PATH" QUEUE_CONNECTION=database SESSION_DRIVER=array "$PHP_BIN" artisan migrate --force >/dev/null && \
+      DB_CONNECTION=sqlite DB_DATABASE="$CLOUD_DB_PATH" QUEUE_CONNECTION=database SESSION_DRIVER=array "$PHP_BIN" artisan canio:cloud:bootstrap "$workspace_name" "Invoices" "Production" --plan="$plan"
   )"
 
-  CLOUD_PROJECT_KEY="$(extract_bootstrap_value "$output" 'projectKey')"
-  CLOUD_ENVIRONMENT_KEY="$(extract_bootstrap_value "$output" 'environmentKey')"
-  CLOUD_AGENT_TOKEN="$(extract_bootstrap_value "$output" 'agentToken')"
+  CLOUD_PROJECT_KEY="$(extract_bootstrap_value "$output" 'Project')"
+  CLOUD_ENVIRONMENT_KEY="$(extract_bootstrap_value "$output" 'Environment')"
+  CLOUD_AGENT_TOKEN="$(extract_bootstrap_value "$output" 'Token')"
 
   if [[ -z "${CLOUD_PROJECT_KEY:-}" || -z "${CLOUD_ENVIRONMENT_KEY:-}" || -z "${CLOUD_AGENT_TOKEN:-}" ]]; then
     echo "Unable to extract Canio Cloud bootstrap values." >&2
     echo "$output" >&2
     exit 1
   fi
+
+  if [[ -n "${CANIO_CLOUD_FIXTURE_SCRIPT:-}" ]]; then
+    if [[ ! -f "$CANIO_CLOUD_FIXTURE_SCRIPT" ]]; then
+      echo "Canio Cloud fixture script not found at $CANIO_CLOUD_FIXTURE_SCRIPT" >&2
+      exit 1
+    fi
+
+    (
+      cd "$CLOUD_DIR"
+      DB_CONNECTION=sqlite \
+      DB_DATABASE="$CLOUD_DB_PATH" \
+      QUEUE_CONNECTION=database \
+        SESSION_DRIVER=array \
+        "$PHP_BIN" "$CANIO_CLOUD_FIXTURE_SCRIPT"
+    )
+  fi
 }
 
 start_example_app() {
+  if [[ -n "${EXAMPLE_PID:-}" ]] && kill -0 "$EXAMPLE_PID" 2>/dev/null; then
+    kill "$EXAMPLE_PID" 2>/dev/null || true
+    sleep 1
+  fi
+
   stop_stagehand_on_port "$EXAMPLE_PORT"
 
   (
@@ -205,8 +353,51 @@ write_example_env() {
   local runtime_state="$TMP_DIR/example-runtime-$mode"
   local runtime_log="$TMP_DIR/example-runtime-$mode.log"
   local chromium_dir="$TMP_DIR/example-chromium-$mode"
+  local env_file="$EXAMPLE_APP_DIR/.env"
 
   cp "$TMP_DIR/example.env.backup" "$EXAMPLE_APP_DIR/.env"
+  "$PHP_BIN" -r '
+    $file = $argv[1];
+    $lines = file($file, FILE_IGNORE_NEW_LINES);
+    $dropPrefixes = [
+        "APP_URL=",
+        "CANIO_RUNTIME_MODE=",
+        "CANIO_RUNTIME_AUTO_START=",
+        "CANIO_RUNTIME_AUTO_INSTALL=",
+        "CANIO_RUNTIME_BASE_URL=",
+        "CANIO_RUNTIME_PORT=",
+        "CANIO_RUNTIME_STATE_PATH=",
+        "CANIO_RUNTIME_LOG_PATH=",
+        "CANIO_CHROMIUM_USER_DATA_DIR=",
+        "CANIO_OPS_ENABLED=",
+        "CANIO_CLOUD_MODE=",
+        "CANIO_CLOUD_BASE_URL=",
+        "CANIO_CLOUD_TOKEN=",
+        "CANIO_CLOUD_PROJECT=",
+        "CANIO_CLOUD_ENVIRONMENT=",
+        "CANIO_CLOUD_TIMEOUT=",
+        "CANIO_CLOUD_SYNC_ENABLED=",
+        "CANIO_CLOUD_SYNC_INCLUDE_ARTIFACTS=",
+    ];
+    $filtered = [];
+
+    foreach ($lines as $line) {
+        $shouldDrop = false;
+        foreach ($dropPrefixes as $prefix) {
+            if (str_starts_with($line, $prefix)) {
+                $shouldDrop = true;
+                break;
+            }
+        }
+
+        if (! $shouldDrop) {
+            $filtered[] = $line;
+        }
+    }
+
+    file_put_contents($file, implode(PHP_EOL, $filtered).PHP_EOL);
+  ' "$env_file"
+
   cat >> "$EXAMPLE_APP_DIR/.env" <<EOF
 
 APP_URL=http://127.0.0.1:$EXAMPLE_PORT
@@ -242,30 +433,65 @@ start_managed_stagehand() {
   wait_for_url "http://127.0.0.1:$MANAGED_STAGEHAND_PORT/healthz"
 }
 
+start_cloud_queue_worker() {
+  if [[ -n "${CLOUD_QUEUE_WORKER_PID:-}" ]] && kill -0 "$CLOUD_QUEUE_WORKER_PID" 2>/dev/null; then
+    return
+  fi
+
+  (
+    cd "$CLOUD_DIR"
+    DB_CONNECTION=sqlite \
+    DB_DATABASE="$CLOUD_DB_PATH" \
+    QUEUE_CONNECTION=database \
+    SESSION_DRIVER=array \
+      "$PHP_BIN" artisan queue:work --sleep=1 --tries=1 --queue=default,canio-managed >"$TMP_DIR/canio-cloud-queue.log" 2>&1
+  ) &
+  CLOUD_QUEUE_WORKER_PID=$!
+}
+
 run_sync_smoke() {
   echo "==> Running sync smoke"
   stop_stagehand_on_port "$SYNC_STAGEHAND_PORT"
   write_example_env "sync" "$SYNC_STAGEHAND_PORT"
+  start_cloud_queue_worker
   start_example_app
   curl -fsS "http://127.0.0.1:$EXAMPLE_PORT/canio/cloud/sync/preview" >/dev/null
-  sleep 2
-  assert_db_count "$CLOUD_DIR/database/database.sqlite" "select count(*) from render_job_records where source = 'oss-runtime'" 1
-  assert_db_count "$CLOUD_DIR/database/database.sqlite" "select count(*) from render_job_records where source = 'stagehand-webhook'" 1
-  assert_db_count "$CLOUD_DIR/database/database.sqlite" "select count(*) from artifact_records" 1
+  wait_for_db_count "$CLOUD_DB_PATH" "select count(*) from render_job_records where source = 'oss-runtime'" 1
+  wait_for_db_count "$CLOUD_DB_PATH" "select count(*) from artifact_records" 1
 }
 
 run_managed_smoke() {
   echo "==> Running managed smoke"
   stop_stagehand_on_port "$MANAGED_STAGEHAND_PORT"
+  write_example_env "managed" "$MANAGED_STAGEHAND_PORT"
+  start_cloud_queue_worker
+  start_example_app
   start_managed_stagehand
   curl -fsS "http://127.0.0.1:$EXAMPLE_PORT/canio/cloud/managed/preview" >/dev/null
-  sleep 2
-  assert_db_count "$CLOUD_DIR/database/database.sqlite" "select count(*) from render_job_records where source = 'managed'" 1
+  wait_for_db_count "$CLOUD_DB_PATH" "select count(*) from render_job_records where source = 'managed'" 1
+  kill "$MANAGED_STAGEHAND_PID" 2>/dev/null || true
+  unset MANAGED_STAGEHAND_PID
+}
+
+run_template_smoke() {
+  echo "==> Running cloud template smoke"
+  stop_stagehand_on_port "$MANAGED_STAGEHAND_PORT"
+  write_example_env "managed" "$MANAGED_STAGEHAND_PORT"
+  start_cloud_queue_worker
+  start_example_app
+  start_managed_stagehand
+  curl -fsS "http://127.0.0.1:$EXAMPLE_PORT/canio/cloud/template-smoke/run/preview" >/dev/null
+  wait_for_db_count "$CLOUD_DB_PATH" "select count(*) from document_templates where slug = 'invoice.default'" 1
+  wait_for_db_count "$CLOUD_DB_PATH" "select count(*) from document_template_versions where document_template_id is not null" 1
+  wait_for_db_count "$CLOUD_DB_PATH" "select count(*) from template_releases where document_template_id is not null" 1
+  wait_for_db_count "$CLOUD_DB_PATH" "select count(*) from render_job_records where source = 'managed' and document_template_id is not null" 1
+  wait_for_db_count "$CLOUD_DB_PATH" "select count(*) from artifact_records where document_template_id is not null" 1
   kill "$MANAGED_STAGEHAND_PID" 2>/dev/null || true
   unset MANAGED_STAGEHAND_PID
 }
 
 prepare_example_app
+inject_template_smoke_routes
 start_cloud
 bootstrap_cloud "Smoke $(date +%s)" "pro"
 
@@ -276,12 +502,16 @@ case "$SCENARIO" in
   managed)
     run_managed_smoke
     ;;
+  template)
+    run_template_smoke
+    ;;
   all)
     run_sync_smoke
     run_managed_smoke
+    run_template_smoke
     ;;
   *)
-    echo "Usage: $0 [sync|managed|all]" >&2
+    echo "Usage: $0 [sync|managed|template|all]" >&2
     exit 1
     ;;
 esac

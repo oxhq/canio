@@ -1,0 +1,69 @@
+name: Contract Smoke
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  contract-smoke:
+    runs-on: ubuntu-latest
+    env:
+      CANIO_PACKAGE_DIR: ${{ github.workspace }}
+      CANIO_CLOUD_DIR: ${{ github.workspace }}/../canio-cloud
+      CANIO_CROSS_REPO_TOKEN: ${{ secrets.CANIO_CROSS_REPO_TOKEN }}
+
+    steps:
+      - name: Checkout Canio package
+        uses: actions/checkout@v5
+
+      - name: Clone Canio Cloud
+        run: |
+          if [[ -z "${CANIO_CROSS_REPO_TOKEN:-}" ]]; then
+            echo "Missing CANIO_CROSS_REPO_TOKEN secret." >&2
+            exit 1
+          fi
+
+          rm -rf "$CANIO_CLOUD_DIR"
+          git clone --depth 1 \
+            "https://x-access-token:${CANIO_CROSS_REPO_TOKEN}@github.com/oxhq/canio-cloud.git" \
+            "$CANIO_CLOUD_DIR"
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          tools: composer:v2
+          coverage: none
+          extensions: intl, zip
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install Canio Cloud dependencies
+        working-directory: ${{ env.CANIO_CLOUD_DIR }}
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ${{ env.CANIO_PACKAGE_DIR }}/runtime/stagehand/go.mod
+          cache-dependency-path: ${{ env.CANIO_PACKAGE_DIR }}/runtime/stagehand/go.sum
+
+      - name: Setup Chrome
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v2
+
+      - name: Run cross-repo contract smoke
+        env:
+          CANIO_CHROMIUM_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          CANIO_CHROMIUM_NO_SANDBOX: "true"
+        run: ${{ env.CANIO_CLOUD_DIR }}/scripts/contract-smoke.sh all
