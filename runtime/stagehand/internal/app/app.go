@@ -23,12 +23,15 @@ import (
 	"github.com/oxhq/canio/runtime/stagehand/internal/version"
 )
 
+var ErrRuntimeMaintenance = errors.New("runtime is not accepting new work")
+
 type App struct {
 	config        config.RuntimeConfig
 	startedAt     time.Time
 	renderCount   int
 	activeRenders int
 	state         string
+	control       runtimeControlState
 	renderer      renderEngine
 	store         *artifacts.Store
 	jobs          *jobs.Manager
@@ -38,6 +41,27 @@ type App struct {
 	eventStop     context.CancelFunc
 	eventWG       sync.WaitGroup
 	mu            sync.Mutex
+}
+
+type runtimeControlState struct {
+	maintenance runtimeMaintenanceState
+	auth        runtimeAuthState
+}
+
+type runtimeMaintenanceState struct {
+	Mode            string
+	Note            string
+	DrainUntilEmpty bool
+	WindowStart     string
+	WindowEnd       string
+}
+
+type runtimeAuthState struct {
+	ActiveSecret           string
+	PreviousSecret         string
+	PreviousSecretExpires  time.Time
+	Version                int
+	Label                  string
 }
 
 type renderEngine interface {
@@ -53,6 +77,11 @@ func New(cfg config.RuntimeConfig) *App {
 		state:     "ready",
 		renderer:  browser.New(cfg),
 		store:     artifacts.New(cfg.StateDir),
+	}
+	app.control.maintenance.Mode = "ready"
+	app.control.auth.ActiveSecret = cfg.AuthSharedSecret
+	if strings.TrimSpace(cfg.AuthSharedSecret) != "" {
+		app.control.auth.Version = 1
 	}
 	app.telemetry = observability.NewRuntime(app.startedAt)
 
@@ -90,6 +119,7 @@ func (a *App) Status() contracts.RuntimeStatus {
 	status.WorkerPool.Busy = jobStats.BusyWorkers
 	status.WorkerPool.QueueLimit = jobStats.QueueLimit
 	status.Queue.Depth = jobStats.QueueDepth
+	status.Control = a.controlStatusLocked()
 
 	return status
 }
@@ -120,10 +150,18 @@ func (a *App) Restart() contracts.RuntimeStatus {
 }
 
 func (a *App) Render(ctx context.Context, spec contracts.RenderSpec) (contracts.RenderResult, error) {
+	if err := a.ensureAcceptingWork(); err != nil {
+		return contracts.RenderResult{}, err
+	}
+
 	return a.executeRender(ctx, spec, "")
 }
 
 func (a *App) Replay(ctx context.Context, artifactID string) (contracts.RenderResult, error) {
+	if err := a.ensureAcceptingWork(); err != nil {
+		return contracts.RenderResult{}, err
+	}
+
 	spec, err := a.store.LoadSpec(artifactID)
 	if err != nil {
 		return contracts.RenderResult{}, err
@@ -141,6 +179,10 @@ func (a *App) Artifacts(limit int) (contracts.ArtifactList, error) {
 }
 
 func (a *App) Dispatch(ctx context.Context, spec contracts.RenderSpec) (contracts.RenderJob, error) {
+	if err := a.ensureAcceptingWork(); err != nil {
+		return contracts.RenderJob{}, err
+	}
+
 	if spec.ContractVersion != "" && spec.ContractVersion != contracts.RenderSpecContractVersion {
 		return contracts.RenderJob{}, fmt.Errorf("unsupported contractVersion %q", spec.ContractVersion)
 	}
@@ -256,12 +298,71 @@ func (a *App) RuntimeCleanup(request contracts.RuntimeCleanupRequest) (contracts
 
 func (a *App) AuthConfig() stageauth.Config {
 	return stageauth.Config{
-		Secret:          a.config.AuthSharedSecret,
+		Secret:          a.activeAuthSecret(),
 		Algorithm:       a.config.AuthAlgorithm,
 		TimestampHeader: a.config.AuthTimestampHeader,
 		SignatureHeader: a.config.AuthSignatureHeader,
 		MaxSkew:         time.Duration(a.config.AuthMaxSkewSec) * time.Second,
 	}
+}
+
+func (a *App) AuthConfigs() []stageauth.Config {
+	base := a.AuthConfig()
+	configs := []stageauth.Config{base}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if strings.TrimSpace(a.control.auth.PreviousSecret) != "" && (a.control.auth.PreviousSecretExpires.IsZero() || a.control.auth.PreviousSecretExpires.After(time.Now().UTC())) {
+		configs = append(configs, stageauth.Config{
+			Secret:          a.control.auth.PreviousSecret,
+			Algorithm:       a.config.AuthAlgorithm,
+			TimestampHeader: a.config.AuthTimestampHeader,
+			SignatureHeader: a.config.AuthSignatureHeader,
+			MaxSkew:         time.Duration(a.config.AuthMaxSkewSec) * time.Second,
+		})
+	}
+
+	return configs
+}
+
+func (a *App) UpdateRuntimeMaintenance(request contracts.RuntimeMaintenanceRequest) contracts.RuntimeStatus {
+	a.mu.Lock()
+	a.control.maintenance.Mode = normalizeMaintenanceMode(request.Mode)
+	a.control.maintenance.Note = strings.TrimSpace(request.Note)
+	a.control.maintenance.DrainUntilEmpty = request.DrainUntilEmpty
+	a.control.maintenance.WindowStart = strings.TrimSpace(request.WindowStart)
+	a.control.maintenance.WindowEnd = strings.TrimSpace(request.WindowEnd)
+	a.mu.Unlock()
+
+	return a.Status()
+}
+
+func (a *App) RotateRuntimeCredentials(request contracts.RuntimeCredentialRotationRequest) (contracts.RuntimeStatus, error) {
+	secret := strings.TrimSpace(request.Secret)
+	if secret == "" {
+		return contracts.RuntimeStatus{}, stageauth.ErrMissingSecret
+	}
+
+	graceSeconds := request.GraceSeconds
+	if graceSeconds <= 0 {
+		graceSeconds = 300
+	}
+
+	a.mu.Lock()
+	previous := a.control.auth.ActiveSecret
+	a.control.auth.ActiveSecret = secret
+	a.control.auth.PreviousSecret = previous
+	a.control.auth.PreviousSecretExpires = time.Now().UTC().Add(time.Duration(graceSeconds) * time.Second)
+	a.control.auth.Label = strings.TrimSpace(request.Label)
+	nextVersion := a.control.auth.Version + 1
+	if request.Version > nextVersion {
+		nextVersion = request.Version
+	}
+	a.control.auth.Version = nextVersion
+	a.mu.Unlock()
+
+	return a.Status(), nil
 }
 
 func (a *App) executeRender(ctx context.Context, spec contracts.RenderSpec, replayOf string) (result contracts.RenderResult, err error) {
@@ -449,6 +550,121 @@ func (a *App) finishRender() {
 	}
 
 	a.state = "ready"
+}
+
+func (a *App) ensureAcceptingWork() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.acceptingWorkLocked() {
+		return nil
+	}
+
+	return ErrRuntimeMaintenance
+}
+
+func (a *App) acceptingWorkLocked() bool {
+	mode := normalizeMaintenanceMode(a.control.maintenance.Mode)
+	if mode == "active" || mode == "draining" {
+		return false
+	}
+
+	if mode == "scheduled" && maintenanceWindowActive(a.control.maintenance.WindowStart, a.control.maintenance.WindowEnd) {
+		return false
+	}
+
+	return true
+}
+
+func (a *App) controlStatusLocked() contracts.ControlMeta {
+	previousAccepted := strings.TrimSpace(a.control.auth.PreviousSecret) != "" && (a.control.auth.PreviousSecretExpires.IsZero() || a.control.auth.PreviousSecretExpires.After(time.Now().UTC()))
+
+	return contracts.ControlMeta{
+		AcceptingWork: a.acceptingWorkLocked(),
+		ActiveRenders: a.activeRenders,
+		Maintenance: contracts.MaintenanceMeta{
+			Mode:            normalizeMaintenanceMode(a.control.maintenance.Mode),
+			Note:            a.control.maintenance.Note,
+			DrainUntilEmpty: a.control.maintenance.DrainUntilEmpty,
+			WindowStart:     a.control.maintenance.WindowStart,
+			WindowEnd:       a.control.maintenance.WindowEnd,
+			Active:          !a.acceptingWorkLocked(),
+		},
+		Credentials: contracts.CredentialStateMeta{
+			Version:                a.control.auth.Version,
+			Label:                  a.control.auth.Label,
+			PreviousSecretAccepted: previousAccepted,
+			PreviousSecretExpires:  formatOptionalTime(a.control.auth.PreviousSecretExpires),
+		},
+	}
+}
+
+func (a *App) activeAuthSecret() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if strings.TrimSpace(a.control.auth.ActiveSecret) != "" {
+		return a.control.auth.ActiveSecret
+	}
+
+	return a.config.AuthSharedSecret
+}
+
+func normalizeMaintenanceMode(mode string) string {
+	switch strings.TrimSpace(strings.ToLower(mode)) {
+	case "", "ready", "none":
+		return "ready"
+	case "scheduled":
+		return "scheduled"
+	case "active", "maintenance":
+		return "active"
+	case "draining":
+		return "draining"
+	default:
+		return "ready"
+	}
+}
+
+func maintenanceWindowActive(start string, end string) bool {
+	startTime, hasStart := parseOptionalTime(start)
+	endTime, hasEnd := parseOptionalTime(end)
+	now := time.Now().UTC()
+
+	if !hasStart && !hasEnd {
+		return false
+	}
+
+	if hasStart && startTime.After(now) {
+		return false
+	}
+
+	if hasEnd && endTime.Before(now) {
+		return false
+	}
+
+	return true
+}
+
+func parseOptionalTime(value string) (time.Time, bool) {
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return time.Time{}, false
+	}
+
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	return parsed.UTC(), true
+}
+
+func formatOptionalTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+
+	return value.UTC().Format(time.RFC3339)
 }
 
 func resolveFileName(spec contracts.RenderSpec, renderCount int) string {

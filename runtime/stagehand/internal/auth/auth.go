@@ -138,6 +138,31 @@ func Verify(cfg Config, req Request, timestamp string, signature string, now tim
 	return nil
 }
 
+func VerifyAny(configs []Config, req Request, timestamp string, signature string, now time.Time) error {
+	if len(configs) == 0 {
+		return ErrMissingSecret
+	}
+
+	var lastErr error
+	for _, cfg := range configs {
+		if strings.TrimSpace(cfg.Secret) == "" {
+			continue
+		}
+
+		if err := Verify(cfg, req, timestamp, signature, now); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+
+	if lastErr != nil {
+		return lastErr
+	}
+
+	return ErrMissingSecret
+}
+
 func computeSignature(cfg Config, method string, path string, body []byte, timestamp string) string {
 	canonical := strings.Join([]string{
 		strings.ToUpper(strings.TrimSpace(method)),

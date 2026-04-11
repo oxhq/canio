@@ -83,6 +83,42 @@ func New(app *appruntime.App) http.Handler {
 		writeJSON(w, http.StatusOK, result)
 	})
 
+	mux.HandleFunc("/v1/runtime/maintenance", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w)
+			return
+		}
+
+		request, err := contracts.DecodeRuntimeMaintenanceRequest(r.Body)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "invalid runtime maintenance request JSON"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, app.UpdateRuntimeMaintenance(request))
+	})
+
+	mux.HandleFunc("/v1/runtime/credentials/rotate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w)
+			return
+		}
+
+		request, err := contracts.DecodeRuntimeCredentialRotationRequest(r.Body)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "invalid runtime credential rotation request JSON"})
+			return
+		}
+
+		status, err := app.RotateRuntimeCredentials(request)
+		if err != nil {
+			writeAppError(w, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, status)
+	})
+
 	mux.HandleFunc("/v1/renders", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeMethodNotAllowed(w)
@@ -301,8 +337,8 @@ func withAuth(app *appruntime.App, next http.Handler) http.Handler {
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
 
-		if err := stageauth.Verify(
-			authConfig,
+		if err := stageauth.VerifyAny(
+			app.AuthConfigs(),
 			stageauth.Request{
 				Method: r.Method,
 				Path:   r.URL.Path,
@@ -405,6 +441,8 @@ func writeAppError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusNotFound, contracts.ErrorResponse{Error: err.Error()})
 	case errors.Is(err, jobs.ErrQueueFull), errors.Is(err, browser.ErrQueueFull):
 		writeJSON(w, http.StatusTooManyRequests, contracts.ErrorResponse{Error: err.Error()})
+	case errors.Is(err, appruntime.ErrRuntimeMaintenance):
+		writeJSON(w, http.StatusServiceUnavailable, contracts.ErrorResponse{Error: err.Error()})
 	default:
 		writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: err.Error()})
 	}

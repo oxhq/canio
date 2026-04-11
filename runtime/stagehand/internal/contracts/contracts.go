@@ -93,6 +93,7 @@ type RuntimeStatus struct {
 	Queue           QueueMeta   `json:"queue"`
 	BrowserPool     PoolMeta    `json:"browserPool"`
 	WorkerPool      PoolMeta    `json:"workerPool"`
+	Control         ControlMeta `json:"control"`
 	Time            string      `json:"time"`
 }
 
@@ -115,8 +116,46 @@ type PoolMeta struct {
 	QueueLimit int `json:"queueLimit,omitempty"`
 }
 
+type ControlMeta struct {
+	AcceptingWork bool                `json:"acceptingWork"`
+	ActiveRenders int                 `json:"activeRenders"`
+	Maintenance   MaintenanceMeta     `json:"maintenance"`
+	Credentials   CredentialStateMeta `json:"credentials"`
+}
+
+type MaintenanceMeta struct {
+	Mode            string `json:"mode"`
+	Note            string `json:"note,omitempty"`
+	DrainUntilEmpty bool   `json:"drainUntilEmpty,omitempty"`
+	WindowStart     string `json:"windowStart,omitempty"`
+	WindowEnd       string `json:"windowEnd,omitempty"`
+	Active          bool   `json:"active"`
+}
+
+type CredentialStateMeta struct {
+	Version                int    `json:"version"`
+	Label                  string `json:"label,omitempty"`
+	PreviousSecretAccepted bool   `json:"previousSecretAccepted,omitempty"`
+	PreviousSecretExpires  string `json:"previousSecretExpires,omitempty"`
+}
+
 type ErrorResponse struct {
 	Error string `json:"error"`
+}
+
+type RuntimeMaintenanceRequest struct {
+	Mode            string `json:"mode"`
+	Note            string `json:"note,omitempty"`
+	DrainUntilEmpty bool   `json:"drainUntilEmpty,omitempty"`
+	WindowStart     string `json:"windowStart,omitempty"`
+	WindowEnd       string `json:"windowEnd,omitempty"`
+}
+
+type RuntimeCredentialRotationRequest struct {
+	Secret       string `json:"secret"`
+	Label        string `json:"label,omitempty"`
+	Version      int    `json:"version,omitempty"`
+	GraceSeconds int    `json:"graceSeconds,omitempty"`
 }
 
 type ArtifactBundle struct {
@@ -258,6 +297,18 @@ func DecodeRuntimeCleanupRequest(r io.Reader) (RuntimeCleanupRequest, error) {
 	return request, err
 }
 
+func DecodeRuntimeMaintenanceRequest(r io.Reader) (RuntimeMaintenanceRequest, error) {
+	var request RuntimeMaintenanceRequest
+	err := json.NewDecoder(r).Decode(&request)
+	return request, err
+}
+
+func DecodeRuntimeCredentialRotationRequest(r io.Reader) (RuntimeCredentialRotationRequest, error) {
+	var request RuntimeCredentialRotationRequest
+	err := json.NewDecoder(r).Decode(&request)
+	return request, err
+}
+
 func EncodeJSON(w io.Writer, value any) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetEscapeHTML(false)
@@ -284,6 +335,17 @@ func NewRuntimeStatus(version string, startedAt time.Time, renderCount int, stat
 		WorkerPool: PoolMeta{
 			Size: 0,
 			Warm: 0,
+		},
+		Control: ControlMeta{
+			AcceptingWork: true,
+			ActiveRenders: 0,
+			Maintenance: MaintenanceMeta{
+				Mode:   "ready",
+				Active: false,
+			},
+			Credentials: CredentialStateMeta{
+				Version: 0,
+			},
 		},
 		Time: time.Now().UTC().Format(time.RFC3339),
 	}
