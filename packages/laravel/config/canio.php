@@ -2,6 +2,32 @@
 
 declare(strict_types=1);
 
+$runtimeSharedSecret = (static function (): ?string {
+    $explicit = trim((string) env('CANIO_RUNTIME_SHARED_SECRET', ''));
+    if ($explicit !== '') {
+        return $explicit;
+    }
+
+    $appKey = trim((string) env('APP_KEY', ''));
+
+    return $appKey !== ''
+        ? hash('sha256', $appKey.':canio-runtime')
+        : null;
+})();
+
+$runtimeJobBackend = (static function (): string {
+    $explicit = trim((string) env('CANIO_RUNTIME_JOB_BACKEND', ''));
+    if ($explicit !== '') {
+        return $explicit;
+    }
+
+    return in_array(strtolower(trim((string) env('APP_ENV', 'production'))), ['production', 'staging'], true)
+        ? 'redis'
+        : 'memory';
+})();
+
+$allowPrivateTargets = in_array(strtolower(trim((string) env('APP_ENV', 'production'))), ['local', 'testing'], true);
+
 return [
     'cloud' => [
         'mode' => env('CANIO_CLOUD_MODE', 'off'),
@@ -35,8 +61,12 @@ return [
             'channel' => env('CANIO_CHROMIUM_CHANNEL', 'stable'),
             'headless' => (bool) env('CANIO_CHROMIUM_HEADLESS', true),
             'no_sandbox' => (bool) env('CANIO_CHROMIUM_NO_SANDBOX', false),
-            'ignore_https_errors' => (bool) env('CANIO_CHROMIUM_IGNORE_HTTPS_ERRORS', true),
+            'ignore_https_errors' => (bool) env('CANIO_CHROMIUM_IGNORE_HTTPS_ERRORS', false),
             'user_data_dir' => env('CANIO_CHROMIUM_USER_DATA_DIR'),
+        ],
+        'navigation' => [
+            'allowed_hosts' => env('CANIO_RUNTIME_ALLOWED_TARGET_HOSTS', ''),
+            'allow_private_targets' => (bool) env('CANIO_RUNTIME_ALLOW_PRIVATE_TARGETS', $allowPrivateTargets),
         ],
         'pool' => [
             'size' => (int) env('CANIO_RUNTIME_BROWSER_POOL_SIZE', 2),
@@ -49,7 +79,7 @@ return [
             'settle_frames' => (int) env('CANIO_RUNTIME_READY_SETTLE_FRAMES', 2),
         ],
         'jobs' => [
-            'backend' => env('CANIO_RUNTIME_JOB_BACKEND', 'memory'),
+            'backend' => $runtimeJobBackend,
             'workers' => (int) env('CANIO_RUNTIME_JOB_WORKERS', 2),
             'queue_depth' => (int) env('CANIO_RUNTIME_JOB_QUEUE_DEPTH', 64),
             'lease_timeout' => (int) env('CANIO_RUNTIME_JOB_LEASE_TIMEOUT', 45),
@@ -84,7 +114,7 @@ return [
                 'enabled' => (bool) env('CANIO_PUSH_WEBHOOK_ENABLED', false),
                 'url' => env('CANIO_PUSH_WEBHOOK_URL'),
                 'path' => env('CANIO_PUSH_WEBHOOK_PATH', '/canio/webhooks/stagehand/jobs'),
-                'secret' => env('CANIO_PUSH_WEBHOOK_SECRET', env('CANIO_RUNTIME_SHARED_SECRET')),
+                'secret' => env('CANIO_PUSH_WEBHOOK_SECRET', $runtimeSharedSecret),
                 'max_skew_seconds' => (int) env('CANIO_PUSH_WEBHOOK_MAX_SKEW', env('CANIO_RUNTIME_AUTH_MAX_SKEW', 300)),
             ],
         ],

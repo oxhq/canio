@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"net"
 	"net/url"
 	"strings"
 	"sync"
@@ -227,7 +228,7 @@ func (r *Renderer) prepareHTML(ctx context.Context, spec contracts.RenderSpec, s
 
 	baseURL := resolveString(spec.Source.Payload["baseUrl"])
 	if baseURL != "" {
-		sanitizedBaseURL, err := validateNavigationTarget(baseURL, false)
+		sanitizedBaseURL, err := validateNavigationTarget(baseURL, false, r.config)
 		if err != nil {
 			return nil, fmt.Errorf("html render source has invalid payload.baseUrl: %w", err)
 		}
@@ -285,7 +286,7 @@ func (r *Renderer) prepareURL(ctx context.Context, spec contracts.RenderSpec, sl
 		return fmt.Errorf("url render source is missing payload.url")
 	}
 
-	sanitizedTargetURL, err := validateNavigationTarget(targetURL, false)
+	sanitizedTargetURL, err := validateNavigationTarget(targetURL, false, r.config)
 	if err != nil {
 		return fmt.Errorf("url render source has invalid payload.url: %w", err)
 	}
@@ -598,7 +599,7 @@ func (r *Renderer) ensureBootstrapURL(ctx context.Context, slotID int, targetURL
 		targetURL = "about:blank"
 	}
 
-	sanitizedTargetURL, err := validateNavigationTarget(targetURL, true)
+	sanitizedTargetURL, err := validateNavigationTarget(targetURL, true, r.config)
 	if err != nil {
 		return err
 	}
@@ -624,7 +625,7 @@ func (r *Renderer) ensureBootstrapURL(ctx context.Context, slotID int, targetURL
 	return nil
 }
 
-func validateNavigationTarget(raw string, allowAboutBlank bool) (string, error) {
+func validateNavigationTarget(raw string, allowAboutBlank bool, cfg config.RuntimeConfig) (string, error) {
 	target := strings.TrimSpace(raw)
 	if target == "" {
 		return "", fmt.Errorf("target URL is empty")
@@ -645,8 +646,13 @@ func validateNavigationTarget(raw string, allowAboutBlank bool) (string, error) 
 
 	switch strings.ToLower(strings.TrimSpace(parsed.Scheme)) {
 	case "http", "https":
-		if strings.TrimSpace(parsed.Host) == "" {
+		host := strings.TrimSpace(parsed.Hostname())
+		if host == "" {
 			return "", fmt.Errorf("host is required")
+		}
+
+		if err := validateTargetHost(host, cfg); err != nil {
+			return "", err
 		}
 
 		return parsed.String(), nil
@@ -659,6 +665,92 @@ func validateNavigationTarget(raw string, allowAboutBlank bool) (string, error) 
 	default:
 		return "", fmt.Errorf("scheme %q is not allowed", parsed.Scheme)
 	}
+}
+
+func validateTargetHost(host string, cfg config.RuntimeConfig) error {
+	normalizedHost := strings.ToLower(strings.TrimSpace(host))
+	if normalizedHost == "" {
+		return fmt.Errorf("host is required")
+	}
+
+	allowedHosts := parseAllowedTargetHosts(cfg.AllowedTargetHosts)
+	if len(allowedHosts) > 0 && !hostMatchesAllowedPatterns(normalizedHost, allowedHosts) {
+		return fmt.Errorf("host %q is not allowed by the Stagehand navigation policy", host)
+	}
+
+	if cfg.AllowPrivateTargets {
+		return nil
+	}
+
+	if isImplicitlyPrivateHost(normalizedHost) {
+		return fmt.Errorf("host %q resolves to a private or loopback target and private targets are disabled", host)
+	}
+
+	if ip := net.ParseIP(normalizedHost); ip != nil {
+		if !isPublicIP(ip) {
+			return fmt.Errorf("host %q resolves to a private or loopback target and private targets are disabled", host)
+		}
+
+		return nil
+	}
+
+	ips, err := net.LookupIP(normalizedHost)
+	if err != nil {
+		return nil
+	}
+
+	for _, ip := range ips {
+		if !isPublicIP(ip) {
+			return fmt.Errorf("host %q resolves to a private or loopback target and private targets are disabled", host)
+		}
+	}
+
+	return nil
+}
+
+func parseAllowedTargetHosts(raw string) []string {
+	parts := strings.Split(raw, ",")
+	allowed := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		pattern := strings.ToLower(strings.TrimSpace(part))
+		if pattern == "" {
+			continue
+		}
+
+		allowed = append(allowed, pattern)
+	}
+
+	return allowed
+}
+
+func hostMatchesAllowedPatterns(host string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if pattern == host {
+			return true
+		}
+
+		if strings.HasPrefix(pattern, "*.") {
+			suffix := strings.TrimPrefix(pattern, "*")
+			if suffix != "" && strings.HasSuffix(host, suffix) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func isImplicitlyPrivateHost(host string) bool {
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") {
+		return true
+	}
+
+	return !strings.Contains(host, ".")
+}
+
+func isPublicIP(ip net.IP) bool {
+	return !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified())
 }
 
 func (r *Renderer) bootstrapURL(slotID int) (string, bool) {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -64,6 +65,8 @@ func runServe(args []string) int {
 	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "Structured log output format: json or text")
 	fs.BoolVar(&cfg.RequestLogging, "request-logging", cfg.RequestLogging, "Emit one structured log line per HTTP request")
 	fs.IntVar(&cfg.RequestBodyLimitBytes, "request-body-limit-bytes", cfg.RequestBodyLimitBytes, "Maximum size in bytes accepted for JSON request bodies")
+	fs.StringVar(&cfg.AllowedTargetHosts, "allowed-target-hosts", cfg.AllowedTargetHosts, "Comma-separated host allowlist for URL/baseUrl navigation. Empty allows any public host.")
+	fs.BoolVar(&cfg.AllowPrivateTargets, "allow-private-targets", cfg.AllowPrivateTargets, "Allow navigation to loopback, RFC1918, and otherwise private network targets")
 	fs.StringVar(&cfg.ChromiumPath, "chromium-path", "", "Optional Chromium or Chrome executable path")
 	fs.StringVar(&cfg.UserDataDir, "user-data-dir", "", "Optional Chromium user data directory")
 	fs.BoolVar(&cfg.Headless, "headless", cfg.Headless, "Run Chromium in headless mode")
@@ -82,6 +85,11 @@ func runServe(args []string) int {
 
 	if err := fs.Parse(args); err != nil {
 		log.Printf("failed to parse serve flags: %v", err)
+		return 1
+	}
+
+	if err := validateServeConfig(cfg); err != nil {
+		log.Printf("refusing to start Stagehand with an unsafe serve configuration: %v", err)
 		return 1
 	}
 
@@ -106,6 +114,8 @@ func runServe(args []string) int {
 		"log_format":                 cfg.LogFormat,
 		"request_logging":            cfg.RequestLogging,
 		"request_body_limit_bytes":   cfg.RequestBodyLimitBytes,
+		"allowed_target_hosts":       cfg.AllowedTargetHosts,
+		"allow_private_targets":      cfg.AllowPrivateTargets,
 		"event_webhook_max_attempts": cfg.EventWebhookMaxAttempts,
 		"event_webhook_backoff_ms":   cfg.EventWebhookBackoffMs,
 	})
@@ -138,6 +148,13 @@ func runServe(args []string) int {
 		})
 	}
 
+	if cfg.AllowPrivateTargets {
+		observability.Info("stagehand_runtime_warning", map[string]any{
+			"warning": "private_target_navigation_enabled",
+			"message": "Private network navigation is enabled; only use this when the runtime is intentionally trusted to reach internal hosts.",
+		})
+	}
+
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		observability.Error("stagehand_server_failed", err, map[string]any{
 			"address": cfg.Address(),
@@ -155,6 +172,8 @@ func runRender(args []string) int {
 	fs.StringVar(&cfg.StateDir, "state-dir", "", "Directory for runtime state and artifacts")
 	fs.StringVar(&cfg.LogFile, "log-file", "", "Optional log file path")
 	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "Structured log output format: json or text")
+	fs.StringVar(&cfg.AllowedTargetHosts, "allowed-target-hosts", cfg.AllowedTargetHosts, "Comma-separated host allowlist for URL/baseUrl navigation. Empty allows any public host.")
+	fs.BoolVar(&cfg.AllowPrivateTargets, "allow-private-targets", cfg.AllowPrivateTargets, "Allow navigation to loopback, RFC1918, and otherwise private network targets")
 	fs.StringVar(&cfg.ChromiumPath, "chromium-path", "", "Optional Chromium or Chrome executable path")
 	fs.StringVar(&cfg.UserDataDir, "user-data-dir", "", "Optional Chromium user data directory")
 	fs.BoolVar(&cfg.Headless, "headless", cfg.Headless, "Run Chromium in headless mode")
@@ -209,6 +228,8 @@ func runReplay(args []string) int {
 	fs.StringVar(&cfg.StateDir, "state-dir", "", "Directory for runtime state and artifacts")
 	fs.StringVar(&cfg.LogFile, "log-file", "", "Optional log file path")
 	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "Structured log output format: json or text")
+	fs.StringVar(&cfg.AllowedTargetHosts, "allowed-target-hosts", cfg.AllowedTargetHosts, "Comma-separated host allowlist for URL/baseUrl navigation. Empty allows any public host.")
+	fs.BoolVar(&cfg.AllowPrivateTargets, "allow-private-targets", cfg.AllowPrivateTargets, "Allow navigation to loopback, RFC1918, and otherwise private network targets")
 	fs.StringVar(&cfg.ChromiumPath, "chromium-path", "", "Optional Chromium or Chrome executable path")
 	fs.StringVar(&cfg.UserDataDir, "user-data-dir", "", "Optional Chromium user data directory")
 	fs.BoolVar(&cfg.Headless, "headless", cfg.Headless, "Run Chromium in headless mode")
@@ -464,6 +485,44 @@ func ensureDirectories(cfg config.RuntimeConfig) error {
 	}
 
 	return nil
+}
+
+func validateServeConfig(cfg config.RuntimeConfig) error {
+	if strings.TrimSpace(cfg.EventWebhookURL) != "" && strings.TrimSpace(cfg.EventWebhookSecret) == "" {
+		return fmt.Errorf("event webhook secret is required when event webhook delivery is enabled")
+	}
+
+	if serveHostIsLoopback(cfg.Host) {
+		return nil
+	}
+
+	if strings.TrimSpace(cfg.AuthSharedSecret) == "" {
+		return fmt.Errorf("auth shared secret is required when Stagehand listens on a non-loopback host")
+	}
+
+	if strings.EqualFold(strings.TrimSpace(cfg.JobBackend), "memory") {
+		return fmt.Errorf("memory job backend is not allowed when Stagehand listens on a non-loopback host")
+	}
+
+	if cfg.IgnoreHTTPSErrors {
+		return fmt.Errorf("ignore HTTPS errors must stay disabled when Stagehand listens on a non-loopback host")
+	}
+
+	return nil
+}
+
+func serveHostIsLoopback(host string) bool {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return true
+	}
+
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func applyPoolFlags(fs *flag.FlagSet, cfg *config.RuntimeConfig) {

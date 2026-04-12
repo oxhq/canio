@@ -125,6 +125,49 @@ func TestWebhookDispatcherSignsAndDeliversEvents(t *testing.T) {
 	}
 }
 
+func TestBusDropsSlowSubscribersByClosingTheirChannels(t *testing.T) {
+	bus := NewBus(4)
+	sub := bus.Subscribe(context.Background(), 1)
+
+	if err := bus.Publish(context.Background(), JobEvent{
+		Kind: JobQueued,
+		Job:  contracts.RenderJob{ID: "job-1", RequestID: "req-1", Status: "queued"},
+	}); err != nil {
+		t.Fatalf("Publish returned error: %v", err)
+	}
+
+	if err := bus.Publish(context.Background(), JobEvent{
+		Kind: JobRunning,
+		Job:  contracts.RenderJob{ID: "job-1", RequestID: "req-1", Status: "running"},
+	}); err != nil {
+		t.Fatalf("Publish returned error: %v", err)
+	}
+
+	select {
+	case <-sub.Done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for subscriber removal")
+	}
+
+	select {
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for closed subscriber channel")
+	default:
+	}
+
+	timeout := time.After(2 * time.Second)
+	for {
+		select {
+		case _, ok := <-sub.Events:
+			if !ok {
+				return
+			}
+		case <-timeout:
+			t.Fatal("timed out waiting for closed subscriber channel")
+		}
+	}
+}
+
 func readAll(t *testing.T, body io.ReadCloser) []byte {
 	t.Helper()
 

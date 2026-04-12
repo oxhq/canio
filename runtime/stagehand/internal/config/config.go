@@ -10,6 +10,8 @@ type RuntimeConfig struct {
 	LogFormat               string
 	RequestLogging          bool
 	RequestBodyLimitBytes   int
+	AllowedTargetHosts      string
+	AllowPrivateTargets     bool
 	ChromiumPath            string
 	UserDataDir             string
 	Headless                bool
@@ -53,6 +55,8 @@ func Default() RuntimeConfig {
 		LogFormat:               "json",
 		RequestLogging:          true,
 		RequestBodyLimitBytes:   5 * 1024 * 1024,
+		AllowedTargetHosts:      "",
+		AllowPrivateTargets:     false,
 		Headless:                true,
 		DisableSandbox:          false,
 		IgnoreHTTPSErrors:       false,

@@ -270,6 +270,7 @@ func (b *Bus) removeSubscriber(id uint64) {
 
 	delete(b.subscribers, id)
 	b.mu.Unlock()
+	close(sub.events)
 	close(sub.done)
 }
 

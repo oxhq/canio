@@ -92,7 +92,7 @@ func TestResolveHTMLBootstrapURLKeepsBaseURLForRawHTMLSources(t *testing.T) {
 func TestValidateNavigationTargetRejectsUnsupportedSchemes(t *testing.T) {
 	t.Parallel()
 
-	if _, err := validateNavigationTarget("file:///etc/passwd", false); err == nil || !strings.Contains(err.Error(), "not allowed") {
+	if _, err := validateNavigationTarget("file:///etc/passwd", false, config.Default()); err == nil || !strings.Contains(err.Error(), "not allowed") {
 		t.Fatalf("expected file scheme to be rejected, got %v", err)
 	}
 }
@@ -100,7 +100,7 @@ func TestValidateNavigationTargetRejectsUnsupportedSchemes(t *testing.T) {
 func TestValidateNavigationTargetRejectsEmbeddedCredentials(t *testing.T) {
 	t.Parallel()
 
-	if _, err := validateNavigationTarget("https://user:pass@example.test/report", false); err == nil || !strings.Contains(err.Error(), "embedded credentials") {
+	if _, err := validateNavigationTarget("https://user:pass@example.test/report", false, config.Default()); err == nil || !strings.Contains(err.Error(), "embedded credentials") {
 		t.Fatalf("expected embedded credentials to be rejected, got %v", err)
 	}
 }
@@ -108,13 +108,57 @@ func TestValidateNavigationTargetRejectsEmbeddedCredentials(t *testing.T) {
 func TestValidateNavigationTargetAllowsAboutBlankWhenRequested(t *testing.T) {
 	t.Parallel()
 
-	target, err := validateNavigationTarget("about:blank", true)
+	target, err := validateNavigationTarget("about:blank", true, config.Default())
 	if err != nil {
 		t.Fatalf("expected about:blank to be accepted, got %v", err)
 	}
 
 	if target != "about:blank" {
 		t.Fatalf("target = %q, want about:blank", target)
+	}
+}
+
+func TestValidateNavigationTargetRejectsPrivateNetworkTargetsByDefault(t *testing.T) {
+	t.Parallel()
+
+	if _, err := validateNavigationTarget("http://127.0.0.1:8080/healthz", false, config.Default()); err == nil || !strings.Contains(err.Error(), "private or loopback") {
+		t.Fatalf("expected loopback target to be rejected, got %v", err)
+	}
+}
+
+func TestValidateNavigationTargetAllowsPrivateTargetsWhenExplicitlyEnabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.AllowPrivateTargets = true
+
+	target, err := validateNavigationTarget("http://127.0.0.1:8080/healthz", false, cfg)
+	if err != nil {
+		t.Fatalf("expected loopback target to be accepted when private targets are enabled, got %v", err)
+	}
+
+	if target != "http://127.0.0.1:8080/healthz" {
+		t.Fatalf("target = %q, want %q", target, "http://127.0.0.1:8080/healthz")
+	}
+}
+
+func TestValidateNavigationTargetAppliesHostAllowlist(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.AllowedTargetHosts = "example.com,*.billing.example.com"
+
+	if _, err := validateNavigationTarget("https://blocked.example.com/report", false, cfg); err == nil || !strings.Contains(err.Error(), "not allowed") {
+		t.Fatalf("expected host allowlist to reject unmatched host, got %v", err)
+	}
+
+	target, err := validateNavigationTarget("https://example.com/report", false, cfg)
+	if err != nil {
+		t.Fatalf("expected exact allowlisted host to pass, got %v", err)
+	}
+
+	if target != "https://example.com/report" {
+		t.Fatalf("target = %q, want https://example.com/report", target)
 	}
 }
 

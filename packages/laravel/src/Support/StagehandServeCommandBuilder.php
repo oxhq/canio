@@ -27,14 +27,16 @@ final class StagehandServeCommandBuilder
         $userDataDir = trim((string) data_get($runtime, 'chromium.user_data_dir', ''));
         $headless = (bool) data_get($runtime, 'chromium.headless', true);
         $noSandbox = (bool) data_get($runtime, 'chromium.no_sandbox', false);
-        $ignoreHttpsErrors = (bool) data_get($runtime, 'chromium.ignore_https_errors', true);
+        $ignoreHttpsErrors = (bool) data_get($runtime, 'chromium.ignore_https_errors', false);
+        $allowedTargetHosts = trim((string) data_get($runtime, 'navigation.allowed_hosts', ''));
+        $allowPrivateTargets = (bool) data_get($runtime, 'navigation.allow_private_targets', $this->defaultAllowPrivateTargets());
         $browserPoolSize = (int) data_get($runtime, 'pool.size', 2);
         $browserPoolWarm = (int) data_get($runtime, 'pool.warm', 1);
         $browserQueueDepth = (int) data_get($runtime, 'pool.queue_depth', 16);
         $browserAcquireTimeout = (int) data_get($runtime, 'pool.acquire_timeout', 15);
         $readyPollIntervalMs = (int) data_get($runtime, 'wait.poll_interval_ms', 50);
         $readySettleFrames = (int) data_get($runtime, 'wait.settle_frames', 2);
-        $jobBackend = (string) data_get($runtime, 'jobs.backend', 'memory');
+        $jobBackend = (string) data_get($runtime, 'jobs.backend', $this->defaultJobBackend());
         $jobWorkers = (int) data_get($runtime, 'jobs.workers', 2);
         $jobQueueDepth = (int) data_get($runtime, 'jobs.queue_depth', 64);
         $jobLeaseTimeout = (int) data_get($runtime, 'jobs.lease_timeout', 45);
@@ -44,7 +46,7 @@ final class StagehandServeCommandBuilder
         $artifactTtlDays = (int) data_get($runtime, 'artifacts.ttl_days', 14);
         $logFormat = (string) data_get($runtime, 'observability.log_format', 'json');
         $requestLogging = (bool) data_get($runtime, 'observability.request_logging', true);
-        $authSharedSecret = trim((string) data_get($runtime, 'auth.shared_secret', data_get($runtime, 'jobs.auth.shared_secret', '')));
+        $authSharedSecret = $this->resolveAuthSharedSecret($runtime);
         $authAlgorithm = (string) data_get($runtime, 'auth.algorithm', data_get($runtime, 'jobs.auth.algorithm', 'canio-v1'));
         $authTimestampHeader = (string) data_get($runtime, 'auth.timestamp_header', data_get($runtime, 'jobs.auth.timestamp_header', 'X-Canio-Timestamp'));
         $authSignatureHeader = (string) data_get($runtime, 'auth.signature_header', data_get($runtime, 'jobs.auth.signature_header', 'X-Canio-Signature'));
@@ -81,6 +83,7 @@ final class StagehandServeCommandBuilder
             '--headless='.($headless ? 'true' : 'false'),
             '--no-sandbox='.($noSandbox ? 'true' : 'false'),
             '--ignore-https-errors='.($ignoreHttpsErrors ? 'true' : 'false'),
+            '--allow-private-targets='.($allowPrivateTargets ? 'true' : 'false'),
             '--browser-pool-size', (string) $browserPoolSize,
             '--browser-pool-warm', (string) $browserPoolWarm,
             '--browser-queue-depth', (string) $browserQueueDepth,
@@ -102,6 +105,11 @@ final class StagehandServeCommandBuilder
             '--job-redis-queue-key', $redisQueueKey,
             '--job-redis-block-timeout', (string) $redisBlockTimeout,
         ];
+
+        if ($allowedTargetHosts !== '') {
+            $command[] = '--allowed-target-hosts';
+            $command[] = $allowedTargetHosts;
+        }
 
         if ($authSharedSecret !== '') {
             $command[] = '--auth-shared-secret';
@@ -132,6 +140,35 @@ final class StagehandServeCommandBuilder
         }
 
         return $command;
+    }
+
+    /**
+     * @param  array<string, mixed>  $runtime
+     */
+    private function resolveAuthSharedSecret(array $runtime): string
+    {
+        $configured = trim((string) data_get($runtime, 'auth.shared_secret', data_get($runtime, 'jobs.auth.shared_secret', '')));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $appKey = trim((string) config('app.key', ''));
+
+        return $appKey !== ''
+            ? hash('sha256', $appKey.':canio-runtime')
+            : '';
+    }
+
+    private function defaultJobBackend(): string
+    {
+        return in_array((string) config('app.env', 'production'), ['production', 'staging'], true)
+            ? 'redis'
+            : 'memory';
+    }
+
+    private function defaultAllowPrivateTargets(): bool
+    {
+        return in_array((string) config('app.env', 'production'), ['local', 'testing'], true);
     }
 
     /**

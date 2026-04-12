@@ -63,14 +63,7 @@ final class StagehandHealthProbe
      */
     private function authHeaders(array $config): array
     {
-        $rootAuth = is_array($config['auth'] ?? null) ? $config['auth'] : [];
-        $legacyAuth = data_get($config, 'jobs.auth', []);
-        $legacyAuth = is_array($legacyAuth) ? $legacyAuth : [];
-
-        $resolvedAuth = array_replace($legacyAuth, array_filter(
-            $rootAuth,
-            static fn (mixed $value): bool => $value !== null && $value !== '',
-        ));
+        $resolvedAuth = StagehandAuthConfiguration::resolve($config);
 
         if (trim((string) ($resolvedAuth['shared_secret'] ?? '')) === '') {
             return [];

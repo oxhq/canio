@@ -13,6 +13,7 @@ use Oxhq\Canio\Data\RenderJob;
 use Oxhq\Canio\Data\RenderResult;
 use Oxhq\Canio\Data\RenderSpec;
 use Oxhq\Canio\Support\RequestSigner;
+use Oxhq\Canio\Support\StagehandAuthConfiguration;
 use Oxhq\Canio\Support\SseDecoder;
 use Oxhq\Canio\Support\NullStagehandRuntimeBootstrapper;
 use Oxhq\Canio\Support\StagehandRuntimeUrl;
@@ -28,16 +29,7 @@ final class HttpStagehandClient implements StagehandClient
         private readonly array $config,
         ?StagehandRuntimeBootstrapper $bootstrapper = null,
     ) {
-        $rootAuth = is_array($this->config['auth'] ?? null) ? $this->config['auth'] : [];
-        $legacyAuth = data_get($this->config, 'jobs.auth', []);
-        $legacyAuth = is_array($legacyAuth) ? $legacyAuth : [];
-
-        $resolvedAuth = array_replace($legacyAuth, array_filter(
-            $rootAuth,
-            static fn (mixed $value): bool => $value !== null && $value !== '',
-        ));
-
-        $this->signer = new RequestSigner($resolvedAuth);
+        $this->signer = new RequestSigner(StagehandAuthConfiguration::resolve($this->config));
         $this->decoder = new SseDecoder;
         $this->bootstrapper = $bootstrapper ?? new NullStagehandRuntimeBootstrapper;
     }

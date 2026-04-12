@@ -736,65 +736,56 @@ func (a *App) startEventWebhookForwarder() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	subscription := a.jobs.SubscribeEvents(ctx, 32)
-	if subscription == nil {
-		cancel()
-		return
-	}
-
 	dispatcher := events.NewWebhookDispatcher(&http.Client{Timeout: 15 * time.Second})
 	a.eventStop = cancel
 	a.eventWG.Add(1)
 
 	go func() {
 		defer a.eventWG.Done()
-		defer subscription.Close()
+
+		lastSequence := uint64(0)
 
 		for {
-			select {
-			case <-ctx.Done():
+			if !a.forwardWebhookHistory(ctx, dispatcher, &lastSequence) {
 				return
-			case event, ok := <-subscription.Events:
-				if !ok {
-					return
-				}
-
-				if !shouldForwardEvent(event.Kind) {
-					continue
-				}
-
-				delivery, err, attempts := deliverWebhookWithRetry(ctx, dispatcher, events.WebhookTarget{
-					URL:    a.config.EventWebhookURL,
-					Secret: a.config.EventWebhookSecret,
-				}, event, normalizeWebhookAttempts(a.config.EventWebhookMaxAttempts), time.Duration(a.config.EventWebhookBackoffMs)*time.Millisecond)
-				success := err == nil && delivery != nil && delivery.Response != nil && delivery.Response.StatusCode >= 200 && delivery.Response.StatusCode < 300
-				a.telemetry.RecordWebhook(success)
-
-				fields := map[string]any{
-					"event":    string(event.Kind),
-					"event_id": event.ID,
-					"target":   a.config.EventWebhookURL,
-					"success":  success,
-					"attempts": attempts,
-				}
-				if delivery != nil && delivery.Response != nil {
-					fields["status"] = delivery.Response.StatusCode
-					_, _ = io.Copy(io.Discard, delivery.Response.Body)
-					_ = delivery.Response.Body.Close()
-				}
-
-				if err != nil {
-					observability.Error("stagehand_webhook_delivery_failed", err, fields)
-					continue
-				}
-
-				if !success {
-					observability.Error("stagehand_webhook_delivery_failed", fmt.Errorf("webhook returned non-success status"), fields)
-					continue
-				}
-
-				observability.Info("stagehand_webhook_delivery_completed", fields)
 			}
+
+			subscription := a.jobs.SubscribeEvents(ctx, 32)
+			if subscription == nil {
+				return
+			}
+
+			for {
+				select {
+				case <-ctx.Done():
+					subscription.Close()
+					return
+				case <-subscription.Done:
+					subscription.Close()
+					time.Sleep(50 * time.Millisecond)
+					goto resubscribe
+				case event, ok := <-subscription.Events:
+					if !ok {
+						subscription.Close()
+						time.Sleep(50 * time.Millisecond)
+						goto resubscribe
+					}
+
+					if event.Sequence <= lastSequence {
+						continue
+					}
+
+					if !a.deliverWebhookEvent(ctx, dispatcher, event) {
+						subscription.Close()
+						return
+					}
+
+					lastSequence = event.Sequence
+				}
+			}
+
+		resubscribe:
+			continue
 		}
 	}()
 }
@@ -814,6 +805,65 @@ func shouldForwardEvent(kind events.Kind) bool {
 	default:
 		return false
 	}
+}
+
+func (a *App) forwardWebhookHistory(ctx context.Context, dispatcher *events.WebhookDispatcher, lastSequence *uint64) bool {
+	for _, event := range a.jobs.EventHistorySince(*lastSequence) {
+		if event.Sequence <= *lastSequence {
+			continue
+		}
+
+		if !a.deliverWebhookEvent(ctx, dispatcher, event) {
+			return false
+		}
+
+		*lastSequence = event.Sequence
+	}
+
+	return true
+}
+
+func (a *App) deliverWebhookEvent(ctx context.Context, dispatcher *events.WebhookDispatcher, event events.JobEvent) bool {
+	if !shouldForwardEvent(event.Kind) {
+		return true
+	}
+
+	delivery, err, attempts := deliverWebhookWithRetry(ctx, dispatcher, events.WebhookTarget{
+		URL:    a.config.EventWebhookURL,
+		Secret: a.config.EventWebhookSecret,
+	}, event, normalizeWebhookAttempts(a.config.EventWebhookMaxAttempts), time.Duration(a.config.EventWebhookBackoffMs)*time.Millisecond)
+	success := err == nil && delivery != nil && delivery.Response != nil && delivery.Response.StatusCode >= 200 && delivery.Response.StatusCode < 300
+	a.telemetry.RecordWebhook(success)
+
+	fields := map[string]any{
+		"event":    string(event.Kind),
+		"event_id": event.ID,
+		"target":   a.config.EventWebhookURL,
+		"success":  success,
+		"attempts": attempts,
+	}
+	if delivery != nil && delivery.Response != nil {
+		fields["status"] = delivery.Response.StatusCode
+		_, _ = io.Copy(io.Discard, delivery.Response.Body)
+		_ = delivery.Response.Body.Close()
+	}
+
+	if err != nil {
+		if ctx.Err() != nil {
+			return false
+		}
+
+		observability.Error("stagehand_webhook_delivery_failed", err, fields)
+		return true
+	}
+
+	if !success {
+		observability.Error("stagehand_webhook_delivery_failed", fmt.Errorf("webhook returned non-success status"), fields)
+		return true
+	}
+
+	observability.Info("stagehand_webhook_delivery_completed", fields)
+	return true
 }
 
 func deliverWebhookWithRetry(ctx context.Context, dispatcher *events.WebhookDispatcher, target events.WebhookTarget, event events.JobEvent, maxAttempts int, backoff time.Duration) (*events.WebhookDelivery, error, int) {
