@@ -1,10 +1,12 @@
 package artifacts
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/oxhq/canio/runtime/stagehand/internal/contracts"
 )
@@ -235,5 +237,71 @@ func TestStoreRenderCacheMissingReturnsNotFound(t *testing.T) {
 
 	if _, err := store.LoadRenderCache(contracts.RenderSpec{RequestID: "req-missing"}); !errors.Is(err, ErrRenderCacheNotFound) {
 		t.Fatalf("LoadRenderCache() error = %v, want ErrRenderCacheNotFound", err)
+	}
+}
+
+func TestStoreCleanupRenderCacheRemovesExpiredEntries(t *testing.T) {
+	t.Parallel()
+
+	store := New(t.TempDir())
+	spec := contracts.RenderSpec{
+		ContractVersion: contracts.RenderSpecContractVersion,
+		RequestID:       "req-cache-expired",
+		Profile:         "invoice",
+		Source: contracts.RenderSource{
+			Type: "html",
+			Payload: map[string]any{
+				"html": "<html><body>Expired cache</body></html>",
+			},
+		},
+	}
+	result := contracts.RenderResult{
+		ContractVersion: contracts.RenderResultContractVersion,
+		RequestID:       spec.RequestID,
+		Status:          "completed",
+		PDF: contracts.RenderedPDF{
+			Base64:      "cGRm",
+			ContentType: "application/pdf",
+			FileName:    "expired.pdf",
+			Bytes:       3,
+		},
+	}
+
+	if err := store.SaveRenderCache(spec, result, []byte("pdf"), nil); err != nil {
+		t.Fatalf("SaveRenderCache() error = %v", err)
+	}
+
+	cached, err := store.LoadRenderCache(spec)
+	if err != nil {
+		t.Fatalf("LoadRenderCache() error = %v", err)
+	}
+
+	cachePath := filepath.Join(cached.Directory, "cache.json")
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	var metadata renderCacheMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+
+	metadata.CreatedAt = time.Now().UTC().Add(-72 * time.Hour).Format(time.RFC3339)
+	if err := writeJSON(cachePath, metadata); err != nil {
+		t.Fatalf("writeJSON() error = %v", err)
+	}
+
+	removed, err := store.CleanupRenderCache(24 * time.Hour)
+	if err != nil {
+		t.Fatalf("CleanupRenderCache() error = %v", err)
+	}
+
+	if len(removed) != 1 {
+		t.Fatalf("CleanupRenderCache() removed %d entries, want 1", len(removed))
+	}
+
+	if _, err := store.LoadRenderCache(spec); !errors.Is(err, ErrRenderCacheNotFound) {
+		t.Fatalf("LoadRenderCache() after cleanup error = %v, want ErrRenderCacheNotFound", err)
 	}
 }

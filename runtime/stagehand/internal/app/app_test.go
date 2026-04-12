@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,6 +17,7 @@ import (
 	"github.com/oxhq/canio/runtime/stagehand/internal/browser"
 	"github.com/oxhq/canio/runtime/stagehand/internal/config"
 	"github.com/oxhq/canio/runtime/stagehand/internal/contracts"
+	"github.com/oxhq/canio/runtime/stagehand/internal/events"
 	"github.com/oxhq/canio/runtime/stagehand/internal/observability"
 )
 
@@ -291,6 +295,49 @@ func TestDispatchQueuesJobAndReturnsCompletedResult(t *testing.T) {
 	}
 
 	t.Fatal("queued job did not complete before timeout")
+}
+
+func TestDeliverWebhookWithRetryRetriesUntilSuccess(t *testing.T) {
+	var attempts atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := attempts.Add(1)
+		if current < 3 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	delivery, err, usedAttempts := deliverWebhookWithRetry(
+		context.Background(),
+		events.NewWebhookDispatcher(server.Client()),
+		events.WebhookTarget{URL: server.URL, Secret: "secret-123"},
+		events.NewJobEvent(events.JobCompleted, contracts.RenderJob{
+			ID:        "job-webhook-1",
+			RequestID: "req-webhook-1",
+			Status:    "completed",
+		}),
+		3,
+		5*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatalf("deliverWebhookWithRetry() error = %v", err)
+	}
+
+	if usedAttempts != 3 {
+		t.Fatalf("usedAttempts = %d, want 3", usedAttempts)
+	}
+
+	if attempts.Load() != 3 {
+		t.Fatalf("server attempts = %d, want 3", attempts.Load())
+	}
+
+	if delivery == nil || delivery.Response == nil || delivery.Response.StatusCode != http.StatusAccepted {
+		t.Fatalf("delivery response = %#v, want %d", delivery, http.StatusAccepted)
+	}
 }
 
 func browserAvailable() bool {

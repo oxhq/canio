@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -70,7 +71,7 @@ func New(app *appruntime.App) http.Handler {
 
 		request, err := contracts.DecodeRuntimeCleanupRequest(r.Body)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "invalid runtime cleanup request JSON"})
+			writeDecodeError(w, err, "invalid runtime cleanup request JSON")
 			return
 		}
 
@@ -91,7 +92,7 @@ func New(app *appruntime.App) http.Handler {
 
 		request, err := contracts.DecodeRuntimeMaintenanceRequest(r.Body)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "invalid runtime maintenance request JSON"})
+			writeDecodeError(w, err, "invalid runtime maintenance request JSON")
 			return
 		}
 
@@ -106,7 +107,7 @@ func New(app *appruntime.App) http.Handler {
 
 		request, err := contracts.DecodeRuntimeCredentialRotationRequest(r.Body)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "invalid runtime credential rotation request JSON"})
+			writeDecodeError(w, err, "invalid runtime credential rotation request JSON")
 			return
 		}
 
@@ -127,7 +128,7 @@ func New(app *appruntime.App) http.Handler {
 
 		spec, err := contracts.DecodeRenderSpec(r.Body)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: fmt.Sprintf("invalid render spec JSON: %v", err)})
+			writeDecodeError(w, err, fmt.Sprintf("invalid render spec JSON: %v", err))
 			return
 		}
 
@@ -147,7 +148,7 @@ func New(app *appruntime.App) http.Handler {
 		case http.MethodPost:
 			spec, err := contracts.DecodeRenderSpec(r.Body)
 			if err != nil {
-				writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: fmt.Sprintf("invalid render spec JSON: %v", err)})
+				writeDecodeError(w, err, fmt.Sprintf("invalid render spec JSON: %v", err))
 				return
 			}
 
@@ -260,7 +261,7 @@ func New(app *appruntime.App) http.Handler {
 
 		request, err := contracts.DecodeDeadLetterRequeueRequest(r.Body)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "invalid dead-letter requeue request JSON"})
+			writeDecodeError(w, err, "invalid dead-letter requeue request JSON")
 			return
 		}
 
@@ -281,7 +282,7 @@ func New(app *appruntime.App) http.Handler {
 
 		request, err := contracts.DecodeDeadLetterCleanupRequest(r.Body)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "invalid dead-letter cleanup request JSON"})
+			writeDecodeError(w, err, "invalid dead-letter cleanup request JSON")
 			return
 		}
 
@@ -302,7 +303,7 @@ func New(app *appruntime.App) http.Handler {
 
 		request, err := contracts.DecodeReplayRequest(r.Body)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "invalid replay request JSON"})
+			writeDecodeError(w, err, "invalid replay request JSON")
 			return
 		}
 
@@ -315,13 +316,37 @@ func New(app *appruntime.App) http.Handler {
 		writeJSON(w, http.StatusOK, result)
 	})
 
-	return withObservability(app, withAuth(app, mux))
+	return withObservability(app, withRequestBodyLimit(app, withAuth(app, mux)))
+}
+
+func withRequestBodyLimit(app *appruntime.App, next http.Handler) http.Handler {
+	limit := app.RequestBodyLimitBytes()
+	if limit <= 0 {
+		return next
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/v1/") || !requestCanHaveBody(r.Method) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func withAuth(app *appruntime.App, next http.Handler) http.Handler {
 	authConfig := app.AuthConfig()
 	if strings.TrimSpace(authConfig.Secret) == "" {
-		return next
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/healthz" || r.URL.Path == "/metrics" || !strings.HasPrefix(r.URL.Path, "/v1/") || requestIsLoopback(r.RemoteAddr) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			writeJSON(w, http.StatusUnauthorized, contracts.ErrorResponse{Error: "unsigned Stagehand requests are only accepted from loopback clients when auth is unset"})
+		})
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -332,6 +357,11 @@ func withAuth(app *appruntime.App, next http.Handler) http.Handler {
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			if isRequestBodyTooLarge(err) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, contracts.ErrorResponse{Error: "request body exceeds the Stagehand limit"})
+				return
+			}
+
 			writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: "failed to read request body"})
 			return
 		}
@@ -354,6 +384,43 @@ func withAuth(app *appruntime.App, next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func requestCanHaveBody(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch:
+		return true
+	default:
+		return false
+	}
+}
+
+func requestIsLoopback(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddr))
+	if err != nil {
+		host = strings.TrimSpace(remoteAddr)
+	}
+
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func writeDecodeError(w http.ResponseWriter, err error, message string) {
+	if isRequestBodyTooLarge(err) {
+		writeJSON(w, http.StatusRequestEntityTooLarge, contracts.ErrorResponse{Error: "request body exceeds the Stagehand limit"})
+		return
+	}
+
+	writeJSON(w, http.StatusBadRequest, contracts.ErrorResponse{Error: message})
+}
+
+func isRequestBodyTooLarge(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var maxBytesErr *http.MaxBytesError
+	return errors.As(err, &maxBytesErr) || strings.Contains(err.Error(), "http: request body too large")
 }
 
 func withObservability(app *appruntime.App, next http.Handler) http.Handler {

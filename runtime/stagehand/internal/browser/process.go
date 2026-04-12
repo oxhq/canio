@@ -37,7 +37,7 @@ func (f processFactory) Start(ctx context.Context, id int) (BrowserProcess, erro
 		return nil, err
 	}
 
-	allocatorCtx, allocatorEnd := chromedp.NewExecAllocator(context.Background(), opts...)
+	allocatorCtx, allocatorEnd := chromedp.NewExecAllocator(backgroundBoundContext(ctx), opts...)
 	browserCtx, browserEnd := chromedp.NewContext(allocatorCtx)
 
 	if err := chromedp.Run(browserCtx,
@@ -59,6 +59,20 @@ func (f processFactory) Start(ctx context.Context, id int) (BrowserProcess, erro
 		browserCtx:   browserCtx,
 		browserEnd:   browserEnd,
 	}, nil
+}
+
+func backgroundBoundContext(parent context.Context) context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		select {
+		case <-parent.Done():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	return ctx
 }
 
 func (p *browserProcess) ID() int {

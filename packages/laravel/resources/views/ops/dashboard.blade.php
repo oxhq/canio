@@ -28,6 +28,23 @@
     <section class="panel">
         <div class="section-head">
             <div>
+                <h2>Runtime Controls</h2>
+                <p>Operator actions for the current Stagehand target.</p>
+            </div>
+        </div>
+        <div class="section-body">
+            <div class="actions">
+                <form action="{{ route('canio.ops.runtime.restart') }}" method="post">
+                    @csrf
+                    <button class="button secondary" type="submit">Restart Runtime</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="section-head">
+            <div>
                 <h2>Recent Jobs</h2>
                 <p>Newest async jobs known by Stagehand.</p>
             </div>
@@ -44,6 +61,7 @@
                             <th>Status</th>
                             <th>Submitted</th>
                             <th>Artifact</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -67,6 +85,23 @@
                                     @else
                                         —
                                     @endif
+                                </td>
+                                <td>
+                                    <div class="actions">
+                                        @if (! $job->terminal())
+                                            <form action="{{ route('canio.ops.jobs.cancel', ['job' => $job->id()]) }}" method="post">
+                                                @csrf
+                                                <button class="button secondary" type="submit">Cancel</button>
+                                            </form>
+                                        @elseif ($job->failed() && $job->deadLetterId())
+                                            <form action="{{ route('canio.ops.jobs.retry', ['job' => $job->id()]) }}" method="post">
+                                                @csrf
+                                                <button class="button secondary" type="submit">Retry</button>
+                                            </form>
+                                        @else
+                                            —
+                                        @endif
+                                    </div>
                                 </td>
                             </tr>
                         @endforeach
@@ -125,15 +160,40 @@
         <section class="panel">
             <div class="section-head">
                 <div>
-                    <h2>Local Ops Boundary</h2>
-                    <p>This panel stays read-only. Use Artisan for local runtime actions, or Canio Cloud for the hosted control plane.</p>
+                    <h2>Dead-Letters</h2>
+                    <p>Failed jobs that still have durable retry context.</p>
                 </div>
             </div>
             <div class="section-body">
-                <div class="empty">
-                    <strong class="mono">Heads up</strong><br>
-                    The OSS package still owns rendering and local debugging. Collaboration, longer retention, hosted links, and managed runtime belong in Canio Cloud.
-                </div>
+                @if ($deadLetters === [])
+                    <div class="empty">No dead-letters are waiting for requeue.</div>
+                @else
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Dead-Letter</th>
+                                <th>Job</th>
+                                <th>Failed</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($deadLetters as $deadLetter)
+                                <tr>
+                                    <td class="mono">{{ data_get($deadLetter, 'id', '—') }}</td>
+                                    <td class="mono">{{ data_get($deadLetter, 'jobId', '—') }}</td>
+                                    <td class="mono">{{ data_get($deadLetter, 'failedAt', '—') }}</td>
+                                    <td>
+                                        <form action="{{ route('canio.ops.dead-letters.requeue', ['deadLetter' => data_get($deadLetter, 'id')]) }}" method="post">
+                                            @csrf
+                                            <button class="button secondary" type="submit">Requeue</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endif
             </div>
         </section>
     </div>

@@ -27,6 +27,7 @@ use Oxhq\Canio\Console\CanioServeCommand;
 use Oxhq\Canio\Contracts\StagehandClient;
 use Oxhq\Canio\Contracts\StagehandRuntimeBootstrapper;
 use Oxhq\Canio\Support\CanioCloudRequestor;
+use Oxhq\Canio\Support\CanioCloudSyncFailureRecorder;
 use Oxhq\Canio\Support\EmbeddedStagehandRuntimeBootstrapper;
 use Oxhq\Canio\Support\HttpCanioCloudSyncer;
 use Oxhq\Canio\Support\NullStagehandRuntimeBootstrapper;
@@ -51,6 +52,7 @@ final class CanioServiceProvider extends ServiceProvider
         $this->app->singleton(CanioCloudRequestor::class, function ($app): CanioCloudRequestor {
             return new CanioCloudRequestor((array) $app['config']->get('canio.cloud', []));
         });
+        $this->app->singleton(CanioCloudSyncFailureRecorder::class);
         $this->app->singleton(StagehandRuntimeBootstrapper::class, function ($app): StagehandRuntimeBootstrapper {
             $cloud = (array) $app['config']->get('canio.cloud', []);
             $cloudMode = strtolower(trim((string) ($cloud['mode'] ?? 'off')));
@@ -107,6 +109,7 @@ final class CanioServiceProvider extends ServiceProvider
             return new CanioManager(
                 stagehand: $app->make(StagehandClient::class),
                 cloudSyncer: $app->make(CanioCloudSyncer::class),
+                syncFailureRecorder: $app->make(CanioCloudSyncFailureRecorder::class),
                 filesystems: $app['filesystem'],
                 views: $app->make(ViewFactory::class),
                 config: (array) $app['config']->get('canio', []),

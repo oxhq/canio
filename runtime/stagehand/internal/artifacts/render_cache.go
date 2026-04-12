@@ -158,6 +158,77 @@ func (s *Store) LoadRenderCache(spec contracts.RenderSpec) (*RenderCacheEntry, e
 	}, nil
 }
 
+func (s *Store) ListRenderCache() ([]Entry, error) {
+	if strings.TrimSpace(s.root) == "" {
+		return []Entry{}, nil
+	}
+
+	root := filepath.Join(s.root, "cache", "renders")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return nil, err
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		directory := filepath.Join(root, entry.Name())
+		item := Entry{
+			ID:        "cache:" + entry.Name(),
+			Directory: directory,
+		}
+
+		cacheFile, err := os.Open(filepath.Join(directory, "cache.json"))
+		if err == nil {
+			var metadata renderCacheMetadata
+			if decodeErr := json.NewDecoder(cacheFile).Decode(&metadata); decodeErr == nil {
+				item.CreatedAt = metadata.CreatedAt
+			}
+			_ = cacheFile.Close()
+		}
+
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
+func (s *Store) CleanupRenderCache(olderThan time.Duration) ([]Entry, error) {
+	if olderThan <= 0 {
+		return []Entry{}, nil
+	}
+
+	items, err := s.ListRenderCache()
+	if err != nil {
+		return nil, err
+	}
+
+	cutoff := time.Now().UTC().Add(-olderThan)
+	removed := make([]Entry, 0)
+
+	for _, item := range items {
+		createdAt, ok := parseMetadataTime(item.CreatedAt)
+		if !ok || createdAt.After(cutoff) {
+			continue
+		}
+
+		if err := os.RemoveAll(item.Directory); err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+
+		removed = append(removed, item)
+	}
+
+	return removed, nil
+}
+
 func renderCacheKey(spec contracts.RenderSpec) (string, contracts.RenderSpec, error) {
 	normalized := spec
 	normalized.ContractVersion = ""

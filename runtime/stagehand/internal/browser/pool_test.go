@@ -262,6 +262,86 @@ func TestPoolCloseUnblocksWaitersAndClosesIdleSlots(t *testing.T) {
 	}
 }
 
+func TestPoolAcquireEvictsCancelledIdleSlots(t *testing.T) {
+	factory := &testFactory{}
+	pool, err := NewPool(factory, Options{MaxBrowsers: 1, QueueDepth: 1})
+	if err != nil {
+		t.Fatalf("NewPool returned error: %v", err)
+	}
+	defer pool.Close()
+
+	if err := pool.Warm(context.Background(), 1); err != nil {
+		t.Fatalf("Warm returned error: %v", err)
+	}
+
+	first, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("Acquire returned error: %v", err)
+	}
+
+	process := first.Browser().(*testProcess)
+	if err := first.Release(); err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+
+	process.cancel()
+
+	second, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("Acquire returned error: %v", err)
+	}
+	defer second.Release()
+
+	if got := second.ID(); got != 1 {
+		t.Fatalf("expected cancelled idle slot to be evicted and replaced, got slot %d", got)
+	}
+
+	stats := pool.Stats()
+	if stats.ReadyBrowsers != 1 || stats.IdleBrowsers != 0 || stats.BusyBrowsers != 1 {
+		t.Fatalf("unexpected stats after evicting cancelled idle slot: %+v", stats)
+	}
+}
+
+func TestPoolReleaseEvictsCancelledLeases(t *testing.T) {
+	factory := &testFactory{}
+	pool, err := NewPool(factory, Options{MaxBrowsers: 1, QueueDepth: 1})
+	if err != nil {
+		t.Fatalf("NewPool returned error: %v", err)
+	}
+	defer pool.Close()
+
+	if err := pool.Warm(context.Background(), 1); err != nil {
+		t.Fatalf("Warm returned error: %v", err)
+	}
+
+	first, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("Acquire returned error: %v", err)
+	}
+
+	process := first.Browser().(*testProcess)
+	process.cancel()
+
+	if err := first.Release(); err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+
+	stats := pool.Stats()
+	if stats.ReadyBrowsers != 0 || stats.IdleBrowsers != 0 || stats.BusyBrowsers != 0 {
+		t.Fatalf("expected cancelled lease to be evicted from pool, got %+v", stats)
+	}
+
+	second, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("Acquire returned error: %v", err)
+	}
+	defer second.Release()
+
+	if got := second.ID(); got != 1 {
+		t.Fatalf("expected cancelled lease to force a replacement slot, got %d", got)
+	}
+}
+
 func waitForPoolStat(t *testing.T, pool *Pool, predicate func(Stats) bool) {
 	t.Helper()
 

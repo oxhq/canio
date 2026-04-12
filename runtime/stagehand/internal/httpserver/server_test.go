@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,6 +23,7 @@ func TestMetricsEndpointExposesPrometheusPayload(t *testing.T) {
 	handler.ServeHTTP(healthResponse, healthRequest)
 
 	statusRequest := httptest.NewRequest(http.MethodGet, "/v1/runtime/status", nil)
+	statusRequest.RemoteAddr = "127.0.0.1:4321"
 	statusResponse := httptest.NewRecorder()
 	handler.ServeHTTP(statusResponse, statusRequest)
 
@@ -54,6 +56,7 @@ func TestRenderEndpointReturnsDecodeDetailsForInvalidJSON(t *testing.T) {
 
 	handler := New(app)
 	request := httptest.NewRequest(http.MethodPost, "/v1/renders", strings.NewReader(`{"postprocess":[]}`))
+	request.RemoteAddr = "127.0.0.1:4321"
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -80,6 +83,7 @@ func TestRuntimeMaintenanceBlocksNewWork(t *testing.T) {
 
 	maintenance := httptest.NewRequest(http.MethodPost, "/v1/runtime/maintenance", strings.NewReader(`{"mode":"draining","note":"patch window","drainUntilEmpty":true}`))
 	maintenance.Header.Set("Content-Type", "application/json")
+	maintenance.RemoteAddr = "127.0.0.1:4321"
 	maintenanceResponse := httptest.NewRecorder()
 	handler.ServeHTTP(maintenanceResponse, maintenance)
 
@@ -88,6 +92,7 @@ func TestRuntimeMaintenanceBlocksNewWork(t *testing.T) {
 	}
 
 	renderRequest := httptest.NewRequest(http.MethodPost, "/v1/renders", strings.NewReader(`{}`))
+	renderRequest.RemoteAddr = "127.0.0.1:4321"
 	renderResponse := httptest.NewRecorder()
 	handler.ServeHTTP(renderResponse, renderRequest)
 
@@ -132,6 +137,40 @@ func TestRuntimeCredentialRotationAcceptsNewSecretWithGraceWindow(t *testing.T) 
 	handler.ServeHTTP(newResponse, newSignedStatus)
 	if newResponse.Code != http.StatusOK {
 		t.Fatalf("expected new secret to be accepted after rotation, got %d", newResponse.Code)
+	}
+}
+
+func TestUnsignedRequestsWithoutSecretAreRejectedForNonLoopbackClients(t *testing.T) {
+	app := appruntime.New(config.Default())
+	defer app.Close()
+
+	handler := New(app)
+	request := httptest.NewRequest(http.MethodPost, "/v1/renders", strings.NewReader(`{}`))
+	request.RemoteAddr = "203.0.113.10:4321"
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unsigned non-loopback request to return 401, got %d", response.Code)
+	}
+}
+
+func TestRequestBodyLimitReturnsRequestEntityTooLarge(t *testing.T) {
+	cfg := config.Default()
+	cfg.RequestBodyLimitBytes = 32
+	app := appruntime.New(cfg)
+	defer app.Close()
+
+	handler := New(app)
+	request := httptest.NewRequest(http.MethodPost, "/v1/renders", bytes.NewReader([]byte(`{"source":{"type":"html","payload":{"html":"`+strings.Repeat("a", 128)+`"}}}`)))
+	request.RemoteAddr = "127.0.0.1:4321"
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected request body limit to return 413, got %d", response.Code)
 	}
 }
 

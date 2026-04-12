@@ -6,6 +6,7 @@ namespace Oxhq\Canio\Console;
 
 use Illuminate\Console\Command;
 use Oxhq\Canio\CanioManager;
+use RuntimeException;
 
 final class CanioRuntimeRestartCommand extends Command
 {
@@ -15,7 +16,13 @@ final class CanioRuntimeRestartCommand extends Command
 
     public function handle(CanioManager $canio): int
     {
-        $status = $canio->runtimeRestart();
+        try {
+            $status = $canio->runtimeRestart();
+        } catch (RuntimeException $exception) {
+            $this->warn($exception->getMessage());
+
+            return self::FAILURE;
+        }
 
         $this->info(sprintf(
             'Stagehand restarted. Current state: %s',

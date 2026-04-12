@@ -132,6 +132,6 @@ final class CloudStagehandClient implements StagehandClient
 
     public function restart(): array
     {
-        throw new RuntimeException('Canio Cloud managed runtime does not expose restart through the Laravel package.');
+        throw new RuntimeException('Canio Cloud managed runtime restart is unavailable from the Laravel package.');
     }
 }

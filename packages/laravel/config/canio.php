@@ -85,6 +85,7 @@ return [
                 'url' => env('CANIO_PUSH_WEBHOOK_URL'),
                 'path' => env('CANIO_PUSH_WEBHOOK_PATH', '/canio/webhooks/stagehand/jobs'),
                 'secret' => env('CANIO_PUSH_WEBHOOK_SECRET', env('CANIO_RUNTIME_SHARED_SECRET')),
+                'max_skew_seconds' => (int) env('CANIO_PUSH_WEBHOOK_MAX_SKEW', env('CANIO_RUNTIME_AUTH_MAX_SKEW', 300)),
             ],
         ],
         'release' => [

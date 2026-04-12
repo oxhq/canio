@@ -12,6 +12,7 @@ use Oxhq\Canio\Contracts\StagehandClient;
 use Oxhq\Canio\Data\RenderJob;
 use Oxhq\Canio\Data\RenderResult;
 use Oxhq\Canio\Data\RenderSpec;
+use Oxhq\Canio\Support\CanioCloudSyncFailureRecorder;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -23,6 +24,7 @@ final class CanioManager
     public function __construct(
         private readonly StagehandClient $stagehand,
         private readonly CanioCloudSyncer $cloudSyncer,
+        private readonly CanioCloudSyncFailureRecorder $syncFailureRecorder,
         private readonly FilesystemManager $filesystems,
         private readonly ViewFactory $views,
         private readonly array $config,
@@ -63,6 +65,14 @@ final class CanioManager
             $this->cloudSyncer->syncRender($spec, $result);
         } catch (\Throwable $exception) {
             report($exception);
+            $this->syncFailureRecorder->record('render', [
+                'requestId' => $result->requestId(),
+                'jobId' => $result->jobId(),
+                'status' => $result->status(),
+                'artifactId' => $result->artifactId(),
+                'sourceType' => data_get($spec->toArray(), 'source.type'),
+                'outputMode' => data_get($spec->toArray(), 'output.mode'),
+            ], $exception);
         }
 
         return $result;

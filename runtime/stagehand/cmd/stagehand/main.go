@@ -63,6 +63,7 @@ func runServe(args []string) int {
 	fs.StringVar(&cfg.LogFile, "log-file", "", "Optional log file path")
 	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "Structured log output format: json or text")
 	fs.BoolVar(&cfg.RequestLogging, "request-logging", cfg.RequestLogging, "Emit one structured log line per HTTP request")
+	fs.IntVar(&cfg.RequestBodyLimitBytes, "request-body-limit-bytes", cfg.RequestBodyLimitBytes, "Maximum size in bytes accepted for JSON request bodies")
 	fs.StringVar(&cfg.ChromiumPath, "chromium-path", "", "Optional Chromium or Chrome executable path")
 	fs.StringVar(&cfg.UserDataDir, "user-data-dir", "", "Optional Chromium user data directory")
 	fs.BoolVar(&cfg.Headless, "headless", cfg.Headless, "Run Chromium in headless mode")
@@ -75,6 +76,8 @@ func runServe(args []string) int {
 	fs.IntVar(&cfg.AuthMaxSkewSec, "auth-max-skew", cfg.AuthMaxSkewSec, "Maximum clock skew in seconds allowed for signed requests")
 	fs.StringVar(&cfg.EventWebhookURL, "event-webhook-url", cfg.EventWebhookURL, "Optional webhook URL that receives async job lifecycle callbacks")
 	fs.StringVar(&cfg.EventWebhookSecret, "event-webhook-secret", cfg.EventWebhookSecret, "Optional webhook signing secret for async job callbacks")
+	fs.IntVar(&cfg.EventWebhookMaxAttempts, "event-webhook-max-attempts", cfg.EventWebhookMaxAttempts, "Maximum delivery attempts for async job lifecycle webhooks")
+	fs.IntVar(&cfg.EventWebhookBackoffMs, "event-webhook-backoff-ms", cfg.EventWebhookBackoffMs, "Backoff in milliseconds between async job lifecycle webhook retries")
 	applyPoolFlags(fs, &cfg)
 
 	if err := fs.Parse(args); err != nil {
@@ -95,14 +98,45 @@ func runServe(args []string) int {
 	}
 
 	observability.Info("stagehand_server_listening", map[string]any{
-		"address":         cfg.Address(),
-		"state_dir":       cfg.StateDir,
-		"job_backend":     cfg.JobBackend,
-		"browser_pool":    cfg.BrowserPoolSize,
-		"worker_count":    cfg.JobWorkerCount,
-		"log_format":      cfg.LogFormat,
-		"request_logging": cfg.RequestLogging,
+		"address":                    cfg.Address(),
+		"state_dir":                  cfg.StateDir,
+		"job_backend":                cfg.JobBackend,
+		"browser_pool":               cfg.BrowserPoolSize,
+		"worker_count":               cfg.JobWorkerCount,
+		"log_format":                 cfg.LogFormat,
+		"request_logging":            cfg.RequestLogging,
+		"request_body_limit_bytes":   cfg.RequestBodyLimitBytes,
+		"event_webhook_max_attempts": cfg.EventWebhookMaxAttempts,
+		"event_webhook_backoff_ms":   cfg.EventWebhookBackoffMs,
 	})
+
+	if strings.TrimSpace(cfg.AuthSharedSecret) == "" {
+		observability.Info("stagehand_runtime_warning", map[string]any{
+			"warning": "unsigned_requests_loopback_only",
+			"message": "Auth shared secret is unset; Stagehand only accepts unsigned /v1 requests from loopback clients.",
+		})
+	}
+
+	if cfg.IgnoreHTTPSErrors {
+		observability.Info("stagehand_runtime_warning", map[string]any{
+			"warning": "ignore_https_errors_enabled",
+			"message": "TLS certificate validation is disabled for browser navigation; this should only be used for controlled local or test environments.",
+		})
+	}
+
+	if strings.EqualFold(cfg.JobBackend, "memory") {
+		observability.Info("stagehand_runtime_warning", map[string]any{
+			"warning": "memory_job_backend",
+			"message": "The in-memory jobs backend is active; queued jobs do not survive process restarts and this mode is not recommended for durable production workloads.",
+		})
+	}
+
+	if strings.TrimSpace(cfg.EventWebhookURL) != "" && strings.TrimSpace(cfg.EventWebhookSecret) == "" {
+		observability.Info("stagehand_runtime_warning", map[string]any{
+			"warning": "event_webhook_secret_unset",
+			"message": "Event webhook delivery is configured without a signing secret; downstream consumers should reject unsigned deliveries, so this should only be used for disposable local testing.",
+		})
+	}
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		observability.Error("stagehand_server_failed", err, map[string]any{

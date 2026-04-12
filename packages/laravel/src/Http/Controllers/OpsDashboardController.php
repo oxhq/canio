@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Oxhq\Canio\Http\Controllers;
 
+use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 use Oxhq\Canio\CanioManager;
 use Throwable;
@@ -16,11 +17,17 @@ final class OpsDashboardController
         $status = null;
         $jobs = [];
         $artifacts = [];
+        $deadLetters = [];
 
         try {
             $status = $canio->runtimeStatus();
             $jobs = $canio->jobs(12);
             $artifacts = $canio->artifacts(12);
+            $deadLetterPayload = $canio->deadLetters();
+            $deadLetters = array_slice(array_values(array_filter(
+                is_array($deadLetterPayload['items'] ?? null) ? $deadLetterPayload['items'] : [],
+                'is_array',
+            )), 0, 8);
         } catch (Throwable $exception) {
             $error = $exception->getMessage();
         }
@@ -31,6 +38,7 @@ final class OpsDashboardController
             'status' => $status,
             'jobs' => $jobs,
             'artifacts' => $artifacts,
+            'deadLetters' => $deadLetters,
         ]);
     }
 
@@ -53,5 +61,65 @@ final class OpsDashboardController
             'opsTitle' => (string) config('canio.ops.title', 'Canio Ops'),
             'artifact' => $canio->artifact($artifactId),
         ]);
+    }
+
+    public function restartRuntime(CanioManager $canio): RedirectResponse
+    {
+        try {
+            $canio->runtimeRestart();
+
+            return redirect()
+                ->route('canio.ops.index')
+                ->with('canio_ops_notice', 'Runtime restart requested.');
+        } catch (Throwable $exception) {
+            return redirect()
+                ->route('canio.ops.index')
+                ->with('canio_ops_notice', 'Runtime restart failed: '.$exception->getMessage());
+        }
+    }
+
+    public function cancelJob(string $jobId, CanioManager $canio): RedirectResponse
+    {
+        try {
+            $canio->cancelJob($jobId);
+
+            return redirect()
+                ->route('canio.ops.jobs.show', ['job' => $jobId])
+                ->with('canio_ops_notice', sprintf('Cancellation requested for job %s.', $jobId));
+        } catch (Throwable $exception) {
+            return redirect()
+                ->route('canio.ops.jobs.show', ['job' => $jobId])
+                ->with('canio_ops_notice', 'Job cancellation failed: '.$exception->getMessage());
+        }
+    }
+
+    public function retryJob(string $jobId, CanioManager $canio): RedirectResponse
+    {
+        try {
+            $job = $canio->retryJob($jobId);
+
+            return redirect()
+                ->route('canio.ops.jobs.show', ['job' => $jobId])
+                ->with('canio_ops_notice', sprintf('Retry queued as %s.', $job->id()));
+        } catch (Throwable $exception) {
+            return redirect()
+                ->route('canio.ops.jobs.show', ['job' => $jobId])
+                ->with('canio_ops_notice', 'Job retry failed: '.$exception->getMessage());
+        }
+    }
+
+    public function requeueDeadLetter(string $deadLetterId, CanioManager $canio): RedirectResponse
+    {
+        try {
+            $job = $canio->requeueDeadLetter($deadLetterId);
+
+            return redirect()
+                ->route('canio.ops.index')
+                ->with('canio_ops_notice', sprintf('Dead-letter %s requeued as %s.', $deadLetterId, $job->id()));
+        } catch (Throwable $exception) {
+            return redirect()
+                ->route('canio.ops.index')
+                ->with('canio_ops_notice', 'Dead-letter requeue failed: '.$exception->getMessage());
+        }
     }
 }

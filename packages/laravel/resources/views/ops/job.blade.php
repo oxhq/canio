@@ -63,20 +63,41 @@
             <section class="panel">
                 <div class="section-head">
                     <div>
-                        <h2>Operator Note</h2>
-                        <p>The local OSS panel is read-only by design.</p>
+                        <h2>Operator Actions</h2>
+                        <p>Use the local panel for the actions this runtime can safely perform.</p>
                     </div>
                 </div>
                 <div class="section-body stack">
-                    @if ($job->artifactId())
-                        <div class="actions">
+                    <div class="actions">
+                        @if ($job->artifactId())
                             <a class="button secondary" href="{{ route('canio.ops.artifacts.show', ['artifact' => $job->artifactId()]) }}">Open Artifact</a>
-                        </div>
-                    @endif
+                        @endif
+
+                        @if (! $job->terminal())
+                            <form action="{{ route('canio.ops.jobs.cancel', ['job' => $job->id()]) }}" method="post">
+                                @csrf
+                                <button class="button secondary" type="submit">Cancel Job</button>
+                            </form>
+                        @endif
+
+                        @if ($job->failed() && $job->deadLetterId())
+                            <form action="{{ route('canio.ops.jobs.retry', ['job' => $job->id()]) }}" method="post">
+                                @csrf
+                                <button class="button secondary" type="submit">Retry Job</button>
+                            </form>
+                        @endif
+
+                        @if ($job->deadLetterId())
+                            <form action="{{ route('canio.ops.dead-letters.requeue', ['deadLetter' => $job->deadLetterId()]) }}" method="post">
+                                @csrf
+                                <button class="button secondary" type="submit">Requeue Dead-Letter</button>
+                            </form>
+                        @endif
+                    </div>
 
                     <div class="empty">
-                        <strong class="mono">Tip</strong><br>
-                        Use Artisan for local runtime actions and lifecycle inspection. Hosted retry, retention, and collaboration move to Canio Cloud.
+                        <strong class="mono">Note</strong><br>
+                        Managed runtime restart still depends on the hosted control plane. The local panel now covers restart, cancel, retry, and dead-letter requeue where the current target supports them.
                     </div>
                 </div>
             </section>

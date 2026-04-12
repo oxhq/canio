@@ -89,6 +89,35 @@ func TestResolveHTMLBootstrapURLKeepsBaseURLForRawHTMLSources(t *testing.T) {
 	}
 }
 
+func TestValidateNavigationTargetRejectsUnsupportedSchemes(t *testing.T) {
+	t.Parallel()
+
+	if _, err := validateNavigationTarget("file:///etc/passwd", false); err == nil || !strings.Contains(err.Error(), "not allowed") {
+		t.Fatalf("expected file scheme to be rejected, got %v", err)
+	}
+}
+
+func TestValidateNavigationTargetRejectsEmbeddedCredentials(t *testing.T) {
+	t.Parallel()
+
+	if _, err := validateNavigationTarget("https://user:pass@example.test/report", false); err == nil || !strings.Contains(err.Error(), "embedded credentials") {
+		t.Fatalf("expected embedded credentials to be rejected, got %v", err)
+	}
+}
+
+func TestValidateNavigationTargetAllowsAboutBlankWhenRequested(t *testing.T) {
+	t.Parallel()
+
+	target, err := validateNavigationTarget("about:blank", true)
+	if err != nil {
+		t.Fatalf("expected about:blank to be accepted, got %v", err)
+	}
+
+	if target != "about:blank" {
+		t.Fatalf("target = %q, want about:blank", target)
+	}
+}
+
 func testRuntimeConfig() config.RuntimeConfig {
 	cfg := config.Default()
 	if os.Getenv("CI") != "" {

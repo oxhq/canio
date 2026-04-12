@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -225,6 +226,13 @@ func (r *Renderer) prepareHTML(ctx context.Context, spec contracts.RenderSpec, s
 	}
 
 	baseURL := resolveString(spec.Source.Payload["baseUrl"])
+	if baseURL != "" {
+		sanitizedBaseURL, err := validateNavigationTarget(baseURL, false)
+		if err != nil {
+			return nil, fmt.Errorf("html render source has invalid payload.baseUrl: %w", err)
+		}
+		baseURL = sanitizedBaseURL
+	}
 	targetURL := resolveHTMLBootstrapURL(spec)
 	warnings := make([]string, 0, 1)
 
@@ -276,6 +284,12 @@ func (r *Renderer) prepareURL(ctx context.Context, spec contracts.RenderSpec, sl
 	if strings.TrimSpace(targetURL) == "" {
 		return fmt.Errorf("url render source is missing payload.url")
 	}
+
+	sanitizedTargetURL, err := validateNavigationTarget(targetURL, false)
+	if err != nil {
+		return fmt.Errorf("url render source has invalid payload.url: %w", err)
+	}
+	targetURL = sanitizedTargetURL
 
 	resp, err := chromedp.RunResponse(ctx, chromedp.Navigate(targetURL))
 	if err != nil {
@@ -584,6 +598,12 @@ func (r *Renderer) ensureBootstrapURL(ctx context.Context, slotID int, targetURL
 		targetURL = "about:blank"
 	}
 
+	sanitizedTargetURL, err := validateNavigationTarget(targetURL, true)
+	if err != nil {
+		return err
+	}
+	targetURL = sanitizedTargetURL
+
 	currentURL, known := r.bootstrapURL(slotID)
 	if known && currentURL == targetURL {
 		return nil
@@ -602,6 +622,43 @@ func (r *Renderer) ensureBootstrapURL(ctx context.Context, slotID int, targetURL
 	r.setBootstrapURL(slotID, targetURL)
 
 	return nil
+}
+
+func validateNavigationTarget(raw string, allowAboutBlank bool) (string, error) {
+	target := strings.TrimSpace(raw)
+	if target == "" {
+		return "", fmt.Errorf("target URL is empty")
+	}
+
+	if allowAboutBlank && target == "about:blank" {
+		return target, nil
+	}
+
+	parsed, err := url.Parse(target)
+	if err != nil {
+		return "", err
+	}
+
+	if parsed.User != nil {
+		return "", fmt.Errorf("embedded credentials are not allowed")
+	}
+
+	switch strings.ToLower(strings.TrimSpace(parsed.Scheme)) {
+	case "http", "https":
+		if strings.TrimSpace(parsed.Host) == "" {
+			return "", fmt.Errorf("host is required")
+		}
+
+		return parsed.String(), nil
+	case "about":
+		if allowAboutBlank && target == "about:blank" {
+			return target, nil
+		}
+
+		return "", fmt.Errorf("about URLs are limited to about:blank")
+	default:
+		return "", fmt.Errorf("scheme %q is not allowed", parsed.Scheme)
+	}
 }
 
 func (r *Renderer) bootstrapURL(slotID int) (string, bool) {

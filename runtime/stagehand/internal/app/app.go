@@ -57,11 +57,11 @@ type runtimeMaintenanceState struct {
 }
 
 type runtimeAuthState struct {
-	ActiveSecret           string
-	PreviousSecret         string
-	PreviousSecretExpires  time.Time
-	Version                int
-	Label                  string
+	ActiveSecret          string
+	PreviousSecret        string
+	PreviousSecretExpires time.Time
+	Version               int
+	Label                 string
 }
 
 type renderEngine interface {
@@ -122,6 +122,14 @@ func (a *App) Status() contracts.RuntimeStatus {
 	status.Control = a.controlStatusLocked()
 
 	return status
+}
+
+func (a *App) RequestBodyLimitBytes() int64 {
+	if a == nil || a.config.RequestBodyLimitBytes <= 0 {
+		return 5 * 1024 * 1024
+	}
+
+	return int64(a.config.RequestBodyLimitBytes)
 }
 
 func (a *App) Restart() contracts.RuntimeStatus {
@@ -274,6 +282,11 @@ func (a *App) RuntimeCleanup(request contracts.RuntimeCleanupRequest) (contracts
 		return contracts.RuntimeCleanup{}, err
 	}
 
+	removedRenderCache, err := a.store.CleanupRenderCache(defaultDuration(artifactsOlderThan, time.Duration(a.config.ArtifactTTLDays)*24*time.Hour))
+	if err != nil {
+		return contracts.RuntimeCleanup{}, err
+	}
+
 	removedDeadLetters, err := a.jobs.CleanupDeadLetters(deadOlderThan)
 	if err != nil {
 		return contracts.RuntimeCleanup{}, err
@@ -286,8 +299,8 @@ func (a *App) RuntimeCleanup(request contracts.RuntimeCleanupRequest) (contracts
 			Removed: cleanupEntriesFromJobs(removedJobs),
 		},
 		Artifacts: contracts.RuntimeCleanupGroup{
-			Count:   len(removedArtifacts),
-			Removed: cleanupEntriesFromArtifacts(removedArtifacts),
+			Count:   len(removedArtifacts) + len(removedRenderCache),
+			Removed: cleanupEntriesFromArtifacts(append(removedArtifacts, removedRenderCache...)),
 		},
 		DeadLetters: contracts.RuntimeCleanupGroup{
 			Count:   removedDeadLetters.Count,
@@ -750,10 +763,10 @@ func (a *App) startEventWebhookForwarder() {
 					continue
 				}
 
-				delivery, err := dispatcher.Deliver(ctx, events.WebhookTarget{
+				delivery, err, attempts := deliverWebhookWithRetry(ctx, dispatcher, events.WebhookTarget{
 					URL:    a.config.EventWebhookURL,
 					Secret: a.config.EventWebhookSecret,
-				}, event)
+				}, event, normalizeWebhookAttempts(a.config.EventWebhookMaxAttempts), time.Duration(a.config.EventWebhookBackoffMs)*time.Millisecond)
 				success := err == nil && delivery != nil && delivery.Response != nil && delivery.Response.StatusCode >= 200 && delivery.Response.StatusCode < 300
 				a.telemetry.RecordWebhook(success)
 
@@ -762,6 +775,7 @@ func (a *App) startEventWebhookForwarder() {
 					"event_id": event.ID,
 					"target":   a.config.EventWebhookURL,
 					"success":  success,
+					"attempts": attempts,
 				}
 				if delivery != nil && delivery.Response != nil {
 					fields["status"] = delivery.Response.StatusCode
@@ -800,6 +814,67 @@ func shouldForwardEvent(kind events.Kind) bool {
 	default:
 		return false
 	}
+}
+
+func deliverWebhookWithRetry(ctx context.Context, dispatcher *events.WebhookDispatcher, target events.WebhookTarget, event events.JobEvent, maxAttempts int, backoff time.Duration) (*events.WebhookDelivery, error, int) {
+	maxAttempts = normalizeWebhookAttempts(maxAttempts)
+	backoff = normalizeWebhookBackoff(backoff)
+
+	var lastDelivery *events.WebhookDelivery
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		delivery, err := dispatcher.Deliver(ctx, target, event)
+		lastDelivery = delivery
+		lastErr = err
+
+		if err == nil && delivery != nil && delivery.Response != nil && delivery.Response.StatusCode >= 200 && delivery.Response.StatusCode < 300 {
+			return delivery, nil, attempt
+		}
+
+		if err == nil && delivery != nil && delivery.Response != nil {
+			_, _ = io.Copy(io.Discard, delivery.Response.Body)
+			_ = delivery.Response.Body.Close()
+			lastErr = fmt.Errorf("webhook returned non-success status %d", delivery.Response.StatusCode)
+		}
+
+		if attempt == maxAttempts {
+			break
+		}
+
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			if ctx.Err() != nil {
+				lastErr = ctx.Err()
+			}
+			return lastDelivery, lastErr, attempt
+		case <-timer.C:
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("webhook delivery failed")
+	}
+
+	return lastDelivery, lastErr, maxAttempts
+}
+
+func normalizeWebhookAttempts(attempts int) int {
+	if attempts <= 0 {
+		return 3
+	}
+
+	return attempts
+}
+
+func normalizeWebhookBackoff(backoff time.Duration) time.Duration {
+	if backoff <= 0 {
+		return 500 * time.Millisecond
+	}
+
+	return backoff
 }
 
 func (a *App) startEventObserver() {

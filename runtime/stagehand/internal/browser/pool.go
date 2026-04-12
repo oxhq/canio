@@ -124,6 +124,7 @@ func (p *Pool) Acquire(ctx context.Context) (*Lease, error) {
 			return nil, err
 		}
 
+		var staleProcess BrowserProcess
 		p.mu.Lock()
 		if p.closed {
 			p.mu.Unlock()
@@ -133,6 +134,16 @@ func (p *Pool) Acquire(ctx context.Context) (*Lease, error) {
 		if len(p.idle) > 0 {
 			slot := p.idle[0]
 			p.idle = p.idle[1:]
+			if !slotUsable(slot) {
+				delete(p.slots, slot.id)
+				staleProcess = slot.process
+				p.signalLocked()
+				p.mu.Unlock()
+				if staleProcess != nil {
+					staleProcess.Close()
+				}
+				continue
+			}
 			slot.leased = true
 			p.mu.Unlock()
 			return &Lease{pool: p, slot: slot}, nil
@@ -160,6 +171,16 @@ func (p *Pool) Acquire(ctx context.Context) (*Lease, error) {
 		if len(p.idle) > 0 {
 			slot := p.idle[0]
 			p.idle = p.idle[1:]
+			if !slotUsable(slot) {
+				delete(p.slots, slot.id)
+				staleProcess = slot.process
+				p.signalLocked()
+				p.mu.Unlock()
+				if staleProcess != nil {
+					staleProcess.Close()
+				}
+				continue
+			}
 			slot.leased = true
 			p.mu.Unlock()
 			return &Lease{pool: p, slot: slot}, nil
@@ -319,11 +340,12 @@ func (p *Pool) signalLocked() {
 }
 
 func (p *Pool) release(slot *slot) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	var staleProcess BrowserProcess
 
+	p.mu.Lock()
 	current, ok := p.slots[slot.id]
 	if !ok {
+		p.mu.Unlock()
 		return nil
 	}
 
@@ -333,14 +355,39 @@ func (p *Pool) release(slot *slot) error {
 
 	if p.closed {
 		delete(p.slots, slot.id)
-		current.process.Close()
+		staleProcess = current.process
 		p.signalLocked()
+		p.mu.Unlock()
+		if staleProcess != nil {
+			staleProcess.Close()
+		}
+		return nil
+	}
+
+	if !slotUsable(current) {
+		delete(p.slots, slot.id)
+		staleProcess = current.process
+		p.signalLocked()
+		p.mu.Unlock()
+		if staleProcess != nil {
+			staleProcess.Close()
+		}
 		return nil
 	}
 
 	p.idle = append(p.idle, current)
 	p.signalLocked()
+	p.mu.Unlock()
 	return nil
+}
+
+func slotUsable(slot *slot) bool {
+	if slot == nil || slot.process == nil {
+		return false
+	}
+
+	processCtx := slot.process.Context()
+	return processCtx != nil && processCtx.Err() == nil
 }
 
 // Browser returns the underlying process for the lease.
