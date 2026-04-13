@@ -34,6 +34,7 @@ type testFactory struct {
 	mu         sync.Mutex
 	starts     []int
 	delayStart time.Duration
+	bindParent bool
 }
 
 func (f *testFactory) Start(ctx context.Context, id int) (BrowserProcess, error) {
@@ -53,7 +54,12 @@ func (f *testFactory) Start(ctx context.Context, id int) (BrowserProcess, error)
 		}
 	}
 
-	procCtx, cancel := context.WithCancel(context.Background())
+	parent := context.Background()
+	if f.bindParent {
+		parent = ctx
+	}
+
+	procCtx, cancel := context.WithCancel(parent)
 	return &testProcess{id: id, ctx: procCtx, cancel: cancel}, nil
 }
 
@@ -203,6 +209,29 @@ func TestPoolAcquireHonorsTimeout(t *testing.T) {
 	waitForPoolStat(t, pool, func(stats Stats) bool {
 		return stats.Waiting == 0
 	})
+}
+
+func TestPoolAcquireWithTimeoutDoesNotCancelFreshLease(t *testing.T) {
+	factory := &testFactory{bindParent: true}
+	pool, err := NewPool(factory, Options{MaxBrowsers: 1, QueueDepth: 1})
+	if err != nil {
+		t.Fatalf("NewPool returned error: %v", err)
+	}
+	defer pool.Close()
+
+	lease, err := pool.AcquireWithTimeout(context.Background(), 100*time.Millisecond)
+	if err != nil {
+		t.Fatalf("AcquireWithTimeout returned error: %v", err)
+	}
+	defer lease.Release()
+
+	process := lease.Browser().(*testProcess)
+
+	select {
+	case <-process.Context().Done():
+		t.Fatal("expected lease browser context to remain alive after AcquireWithTimeout returns")
+	case <-time.After(50 * time.Millisecond):
+	}
 }
 
 func TestPoolCloseUnblocksWaitersAndClosesIdleSlots(t *testing.T) {

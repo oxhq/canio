@@ -50,6 +50,9 @@ type Pool struct {
 	factory Factory
 	opts    Options
 
+	lifecycleCtx    context.Context
+	lifecycleCancel context.CancelFunc
+
 	mu       sync.Mutex
 	notify   chan struct{}
 	done     chan struct{}
@@ -65,6 +68,7 @@ type Pool struct {
 type slot struct {
 	id      int
 	process BrowserProcess
+	stop    context.CancelFunc
 	leased  bool
 }
 
@@ -88,9 +92,13 @@ func NewPool(factory Factory, opts Options) (*Pool, error) {
 		opts.QueueDepth = 0
 	}
 
+	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
+
 	return &Pool{
 		factory: factory,
 		opts:    opts,
+		lifecycleCtx: lifecycleCtx,
+		lifecycleCancel: lifecycleCancel,
 		notify:  make(chan struct{}),
 		done:    make(chan struct{}),
 		slots:   make(map[int]*slot),
@@ -124,10 +132,10 @@ func (p *Pool) Acquire(ctx context.Context) (*Lease, error) {
 			return nil, err
 		}
 
-		var staleProcess BrowserProcess
-		p.mu.Lock()
-		if p.closed {
-			p.mu.Unlock()
+	var staleSlot *slot
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
 			return nil, ErrPoolClosed
 		}
 
@@ -136,12 +144,10 @@ func (p *Pool) Acquire(ctx context.Context) (*Lease, error) {
 			p.idle = p.idle[1:]
 			if !slotUsable(slot) {
 				delete(p.slots, slot.id)
-				staleProcess = slot.process
+				staleSlot = slot
 				p.signalLocked()
 				p.mu.Unlock()
-				if staleProcess != nil {
-					staleProcess.Close()
-				}
+				closeSlotResources(staleSlot)
 				continue
 			}
 			slot.leased = true
@@ -173,12 +179,10 @@ func (p *Pool) Acquire(ctx context.Context) (*Lease, error) {
 			p.idle = p.idle[1:]
 			if !slotUsable(slot) {
 				delete(p.slots, slot.id)
-				staleProcess = slot.process
+				staleSlot = slot
 				p.signalLocked()
 				p.mu.Unlock()
-				if staleProcess != nil {
-					staleProcess.Close()
-				}
+				closeSlotResources(staleSlot)
 				continue
 			}
 			slot.leased = true
@@ -267,12 +271,15 @@ func (p *Pool) Close() error {
 	for _, s := range idle {
 		delete(p.slots, s.id)
 	}
+	if p.lifecycleCancel != nil {
+		p.lifecycleCancel()
+	}
 	p.signalLocked()
 	close(p.done)
 	p.mu.Unlock()
 
 	for _, s := range idle {
-		s.process.Close()
+		closeSlotResources(s)
 	}
 
 	return nil
@@ -287,11 +294,24 @@ func (p *Pool) startSlot(ctx context.Context, leased bool) (bool, *slot, error) 
 		return false, nil, nil
 	}
 
-	process, err := p.factory.Start(ctx, id)
+	slotCtx, slotCancel := context.WithCancel(p.lifecycleCtx)
+	startupDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			slotCancel()
+		case <-startupDone:
+		case <-slotCtx.Done():
+		}
+	}()
+
+	process, err := p.factory.Start(slotCtx, id)
+	close(startupDone)
 	p.mu.Lock()
 	p.starting--
 
 	if err != nil {
+		slotCancel()
 		p.signalLocked()
 		p.mu.Unlock()
 		return true, nil, err
@@ -300,6 +320,7 @@ func (p *Pool) startSlot(ctx context.Context, leased bool) (bool, *slot, error) 
 	if p.closed {
 		p.signalLocked()
 		p.mu.Unlock()
+		slotCancel()
 		process.Close()
 		return true, nil, ErrPoolClosed
 	}
@@ -307,6 +328,7 @@ func (p *Pool) startSlot(ctx context.Context, leased bool) (bool, *slot, error) 
 	s := &slot{
 		id:      id,
 		process: process,
+		stop:    slotCancel,
 		leased:  leased,
 	}
 	p.slots[id] = s
@@ -339,11 +361,11 @@ func (p *Pool) signalLocked() {
 	p.notify = next
 }
 
-func (p *Pool) release(slot *slot) error {
-	var staleProcess BrowserProcess
+func (p *Pool) release(leasedSlot *slot) error {
+	var staleSlot *slot
 
 	p.mu.Lock()
-	current, ok := p.slots[slot.id]
+	current, ok := p.slots[leasedSlot.id]
 	if !ok {
 		p.mu.Unlock()
 		return nil
@@ -354,24 +376,20 @@ func (p *Pool) release(slot *slot) error {
 	}
 
 	if p.closed {
-		delete(p.slots, slot.id)
-		staleProcess = current.process
+		delete(p.slots, leasedSlot.id)
+		staleSlot = current
 		p.signalLocked()
 		p.mu.Unlock()
-		if staleProcess != nil {
-			staleProcess.Close()
-		}
+		closeSlotResources(staleSlot)
 		return nil
 	}
 
 	if !slotUsable(current) {
-		delete(p.slots, slot.id)
-		staleProcess = current.process
+		delete(p.slots, leasedSlot.id)
+		staleSlot = current
 		p.signalLocked()
 		p.mu.Unlock()
-		if staleProcess != nil {
-			staleProcess.Close()
-		}
+		closeSlotResources(staleSlot)
 		return nil
 	}
 
@@ -379,6 +397,20 @@ func (p *Pool) release(slot *slot) error {
 	p.signalLocked()
 	p.mu.Unlock()
 	return nil
+}
+
+func closeSlotResources(slot *slot) {
+	if slot == nil {
+		return
+	}
+
+	if slot.stop != nil {
+		slot.stop()
+	}
+
+	if slot.process != nil {
+		slot.process.Close()
+	}
 }
 
 func slotUsable(slot *slot) bool {
