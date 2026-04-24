@@ -10,6 +10,14 @@ use RuntimeException;
 
 final class StagehandReleaseInstaller
 {
+    private readonly StagehandBinaryCompatibility $compatibility;
+
+    public function __construct(
+        ?StagehandBinaryCompatibility $compatibility = null,
+    ) {
+        $this->compatibility = $compatibility ?? new StagehandBinaryCompatibility;
+    }
+
     /**
      * @param  array<string, mixed>  $config
      */
@@ -85,6 +93,14 @@ final class StagehandReleaseInstaller
             @chmod($installPath, 0755);
         }
 
+        try {
+            $this->compatibility->assertCompatible($installPath);
+        } catch (RuntimeException $exception) {
+            File::delete($installPath);
+
+            throw $exception;
+        }
+
         return new StagehandInstallResult(
             tag: $tag,
             os: $resolvedOs,
@@ -153,7 +169,7 @@ final class StagehandReleaseInstaller
             throw new RuntimeException('Install path is empty. Set CANIO_RUNTIME_INSTALL_PATH or pass a path.');
         }
 
-        $resolved = str_starts_with($trimmed, DIRECTORY_SEPARATOR)
+        $resolved = $this->isAbsolutePath($trimmed)
             ? $trimmed
             : base_path($trimmed);
 
@@ -162,6 +178,13 @@ final class StagehandReleaseInstaller
         }
 
         return $resolved;
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return str_starts_with($path, DIRECTORY_SEPARATOR)
+            || str_starts_with($path, '/')
+            || preg_match('/^[A-Za-z]:[\/\\\\]/', $path) === 1;
     }
 
     public function assetName(string $tag, string $os, string $arch): string

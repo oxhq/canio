@@ -10,12 +10,12 @@ it('applies production-safe defaults when runtime settings are omitted', functio
     config()->set('app.key', 'base64:'.base64_encode(str_repeat('b', 32)));
 
     $workspace = sys_get_temp_dir().'/canio-serve-builder-'.bin2hex(random_bytes(6));
-    $binaryPath = $workspace.'/bin/stagehand';
+    $binaryPath = $workspace.'/bin/stagehand'.(PHP_OS_FAMILY === 'Windows' ? '.bat' : '');
     $statePath = $workspace.'/state';
     $logPath = $workspace.'/logs/runtime.log';
 
     File::ensureDirectoryExists(dirname($binaryPath));
-    File::put($binaryPath, "#!/bin/sh\nexit 0\n");
+    File::put($binaryPath, PHP_OS_FAMILY === 'Windows' ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n");
     @chmod($binaryPath, 0755);
 
     $builder = app(StagehandServeCommandBuilder::class);
@@ -44,12 +44,12 @@ it('forwards navigation policy and explicit runtime overrides to stagehand', fun
     config()->set('app.key', 'base64:'.base64_encode(str_repeat('c', 32)));
 
     $workspace = sys_get_temp_dir().'/canio-serve-builder-'.bin2hex(random_bytes(6));
-    $binaryPath = $workspace.'/bin/stagehand';
+    $binaryPath = $workspace.'/bin/stagehand'.(PHP_OS_FAMILY === 'Windows' ? '.bat' : '');
     $statePath = $workspace.'/state';
     $logPath = $workspace.'/logs/runtime.log';
 
     File::ensureDirectoryExists(dirname($binaryPath));
-    File::put($binaryPath, "#!/bin/sh\nexit 0\n");
+    File::put($binaryPath, PHP_OS_FAMILY === 'Windows' ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n");
     @chmod($binaryPath, 0755);
 
     $builder = app(StagehandServeCommandBuilder::class);

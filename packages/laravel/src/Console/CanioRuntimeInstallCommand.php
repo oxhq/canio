@@ -27,7 +27,7 @@ final class CanioRuntimeInstallCommand extends Command
             $os = $installer->resolveOperatingSystem($this->option('os'));
             $arch = $installer->resolveArchitecture($this->option('arch'));
 
-            $this->line(sprintf('Downloading %s for %s/%s…', $tag, $os, $arch));
+            $this->line(sprintf('Downloading %s for %s/%s...', $tag, $os, $arch));
 
             $result = $installer->install(
                 config: $config,

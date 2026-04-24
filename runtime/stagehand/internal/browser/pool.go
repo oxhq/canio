@@ -95,13 +95,13 @@ func NewPool(factory Factory, opts Options) (*Pool, error) {
 	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
 
 	return &Pool{
-		factory: factory,
-		opts:    opts,
-		lifecycleCtx: lifecycleCtx,
+		factory:         factory,
+		opts:            opts,
+		lifecycleCtx:    lifecycleCtx,
 		lifecycleCancel: lifecycleCancel,
-		notify:  make(chan struct{}),
-		done:    make(chan struct{}),
-		slots:   make(map[int]*slot),
+		notify:          make(chan struct{}),
+		done:            make(chan struct{}),
+		slots:           make(map[int]*slot),
 	}, nil
 }
 
@@ -132,10 +132,10 @@ func (p *Pool) Acquire(ctx context.Context) (*Lease, error) {
 			return nil, err
 		}
 
-	var staleSlot *slot
-	p.mu.Lock()
-	if p.closed {
-		p.mu.Unlock()
+		var staleSlot *slot
+		p.mu.Lock()
+		if p.closed {
+			p.mu.Unlock()
 			return nil, ErrPoolClosed
 		}
 
@@ -295,20 +295,22 @@ func (p *Pool) startSlot(ctx context.Context, leased bool) (bool, *slot, error) 
 	}
 
 	slotCtx, slotCancel := context.WithCancel(p.lifecycleCtx)
-	startupDone := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			slotCancel()
-		case <-startupDone:
-		case <-slotCtx.Done():
-		}
-	}()
+	cancelStartup := context.AfterFunc(ctx, slotCancel)
 
 	process, err := p.factory.Start(slotCtx, id)
-	close(startupDone)
+	cancelStartup()
 	p.mu.Lock()
 	p.starting--
+
+	if err == nil && slotCtx.Err() != nil {
+		if process != nil {
+			process.Close()
+		}
+		err = ctx.Err()
+		if err == nil {
+			err = slotCtx.Err()
+		}
+	}
 
 	if err != nil {
 		slotCancel()

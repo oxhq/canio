@@ -8,18 +8,20 @@ use Illuminate\Support\Facades\Http;
 
 it('downloads and installs the matching stagehand binary', function () {
     $directory = sys_get_temp_dir().'/canio-install-'.bin2hex(random_bytes(6));
-    $binaryPath = $directory.'/bin/stagehand';
-    $contents = "fake-stagehand-binary\n";
+    $binaryPath = $directory.'/bin/stagehand'.(PHP_OS_FAMILY === 'Windows' ? '.bat' : '');
+    $contents = PHP_OS_FAMILY === 'Windows'
+        ? "@echo off\r\necho Usage of serve:\r\necho   -allow-private-targets\r\necho   -request-body-limit-bytes int\r\nexit /b 1\r\n"
+        : "#!/usr/bin/env sh\necho 'Usage of serve:'\necho '  -allow-private-targets'\necho '  -request-body-limit-bytes int'\nexit 1\n";
     $checksum = hash('sha256', $contents);
 
     config()->set('canio.runtime.release.repository', 'oxhq/canio');
     config()->set('canio.runtime.release.base_url', 'https://github.com');
 
     Http::fake([
-        'https://github.com/oxhq/canio/releases/download/v1.0.1/checksums.txt' => Http::response(
-            "{$checksum}  stagehand_v1.0.1_linux_amd64\n",
+        'https://github.com/oxhq/canio/releases/download/v1.0.2/checksums.txt' => Http::response(
+            "{$checksum}  stagehand_v1.0.2_linux_amd64\n",
         ),
-        'https://github.com/oxhq/canio/releases/download/v1.0.1/stagehand_v1.0.1_linux_amd64' => Http::response(
+        'https://github.com/oxhq/canio/releases/download/v1.0.2/stagehand_v1.0.2_linux_amd64' => Http::response(
             $contents,
             200,
             ['Content-Type' => 'application/octet-stream'],
@@ -27,20 +29,20 @@ it('downloads and installs the matching stagehand binary', function () {
     ]);
 
     $this->artisan('canio:runtime:install', [
-        'version' => 'v1.0.1',
+        'version' => 'v1.0.2',
         '--path' => $binaryPath,
         '--os' => 'linux',
         '--arch' => 'amd64',
     ])
-        ->expectsOutput('Downloading v1.0.1 for linux/amd64…')
-        ->expectsOutput(sprintf('Installed Stagehand v1.0.1 to %s', $binaryPath))
+        ->expectsOutput('Downloading v1.0.2 for linux/amd64...')
+        ->expectsOutput(sprintf('Installed Stagehand v1.0.2 to %s', $binaryPath))
         ->assertSuccessful();
 
     expect(File::exists($binaryPath))->toBeTrue()
         ->and(File::get($binaryPath))->toBe($contents);
 
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'checksums.txt'));
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'stagehand_v1.0.1_linux_amd64'));
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'stagehand_v1.0.2_linux_amd64'));
 
     File::deleteDirectory($directory);
 });

@@ -27,7 +27,7 @@ final class StagehandBinaryResolver
         if ($this->looksLikePath($configured)) {
             $candidate = $this->normalizePath($configured, $workingDirectory);
 
-            if (is_file($candidate) && is_executable($candidate)) {
+            if ($this->isRunnableFile($candidate)) {
                 return $candidate;
             }
 
@@ -46,7 +46,7 @@ final class StagehandBinaryResolver
         if ($installPath !== '') {
             $installedBinary = $this->normalizePath($installPath, $workingDirectory);
 
-            if (is_file($installedBinary) && is_executable($installedBinary)) {
+            if ($this->isRunnableFile($installedBinary)) {
                 return $installedBinary;
             }
 
@@ -69,6 +69,8 @@ final class StagehandBinaryResolver
     private function looksLikePath(string $binary): bool
     {
         return str_contains($binary, DIRECTORY_SEPARATOR)
+            || str_contains($binary, '/')
+            || str_contains($binary, '\\')
             || str_starts_with($binary, '.')
             || str_starts_with($binary, '~');
     }
@@ -81,10 +83,31 @@ final class StagehandBinaryResolver
             return ($home !== '' ? rtrim($home, DIRECTORY_SEPARATOR) : '').DIRECTORY_SEPARATOR.ltrim(substr($binary, 2), DIRECTORY_SEPARATOR);
         }
 
-        if (str_starts_with($binary, DIRECTORY_SEPARATOR)) {
+        if ($this->isAbsolutePath($binary)) {
             return $binary;
         }
 
         return rtrim($workingDirectory, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.ltrim($binary, DIRECTORY_SEPARATOR);
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return str_starts_with($path, DIRECTORY_SEPARATOR)
+            || str_starts_with($path, '/')
+            || preg_match('/^[A-Za-z]:[\/\\\\]/', $path) === 1;
+    }
+
+    private function isRunnableFile(string $path): bool
+    {
+        if (! is_file($path)) {
+            return false;
+        }
+
+        if (is_executable($path)) {
+            return true;
+        }
+
+        return PHP_OS_FAMILY === 'Windows'
+            && in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), ['bat', 'cmd', 'exe'], true);
     }
 }
