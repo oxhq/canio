@@ -8,7 +8,6 @@ use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Support\ServiceProvider;
 use Oxhq\Canio\Bridge\CloudStagehandClient;
 use Oxhq\Canio\Bridge\HttpStagehandClient;
-use Oxhq\Canio\Contracts\CanioCloudSyncer;
 use Oxhq\Canio\Console\CanioDoctorCommand;
 use Oxhq\Canio\Console\CanioInstallCommand;
 use Oxhq\Canio\Console\CanioRuntimeArtifactCommand;
@@ -24,14 +23,16 @@ use Oxhq\Canio\Console\CanioRuntimeRestartCommand;
 use Oxhq\Canio\Console\CanioRuntimeRetryCommand;
 use Oxhq\Canio\Console\CanioRuntimeStatusCommand;
 use Oxhq\Canio\Console\CanioServeCommand;
+use Oxhq\Canio\Contracts\CanioCloudSyncer;
 use Oxhq\Canio\Contracts\StagehandClient;
 use Oxhq\Canio\Contracts\StagehandRuntimeBootstrapper;
 use Oxhq\Canio\Support\CanioCloudRequestor;
 use Oxhq\Canio\Support\CanioCloudSyncFailureRecorder;
 use Oxhq\Canio\Support\EmbeddedStagehandRuntimeBootstrapper;
 use Oxhq\Canio\Support\HttpCanioCloudSyncer;
-use Oxhq\Canio\Support\NullStagehandRuntimeBootstrapper;
 use Oxhq\Canio\Support\NullCanioCloudSyncer;
+use Oxhq\Canio\Support\NullStagehandRuntimeBootstrapper;
+use Oxhq\Canio\Support\StagehandBinaryCompatibility;
 use Oxhq\Canio\Support\StagehandBinaryResolver;
 use Oxhq\Canio\Support\StagehandHealthProbe;
 use Oxhq\Canio\Support\StagehandProcessLauncher;
@@ -44,6 +45,7 @@ final class CanioServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/canio.php', 'canio');
 
+        $this->app->singleton(StagehandBinaryCompatibility::class);
         $this->app->singleton(StagehandBinaryResolver::class);
         $this->app->singleton(StagehandReleaseInstaller::class);
         $this->app->singleton(StagehandServeCommandBuilder::class);

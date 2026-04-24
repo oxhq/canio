@@ -113,7 +113,7 @@ func allocatorOptions(cfg config.RuntimeConfig, id int) ([]chromedp.ExecAllocato
 	}
 
 	if dir := strings.TrimSpace(cfg.UserDataDir); dir != "" {
-		slotDir := filepath.Join(dir, "browser-"+sanitizeSlotID(id))
+		slotDir := slotUserDataDir(dir, id)
 		if err := os.MkdirAll(slotDir, 0o755); err != nil {
 			return nil, err
 		}
@@ -139,6 +139,14 @@ func allocatorOptions(cfg config.RuntimeConfig, id int) ([]chromedp.ExecAllocato
 	opts = append(opts, chromedp.WindowSize(1440, 2000))
 
 	return opts, nil
+}
+
+func slotUserDataDir(base string, id int) string {
+	return filepath.Join(strings.TrimSpace(base), processProfileNamespace(), "browser-"+sanitizeSlotID(id))
+}
+
+func processProfileNamespace() string {
+	return fmt.Sprintf("stagehand-%d", os.Getpid())
 }
 
 func sanitizeSlotID(id int) string {
