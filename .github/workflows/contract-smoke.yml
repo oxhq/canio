@@ -23,19 +23,26 @@ jobs:
       - name: Checkout Canio package
         uses: actions/checkout@v5
 
-      - name: Clone Canio Cloud
+      - name: Check cross-repo token
+        id: cross-repo-token
         run: |
           if [[ -z "${CANIO_CROSS_REPO_TOKEN:-}" ]]; then
-            echo "Missing CANIO_CROSS_REPO_TOKEN secret." >&2
-            exit 1
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping contract smoke because CANIO_CROSS_REPO_TOKEN is not available for this run."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Clone Canio Cloud
+        if: steps.cross-repo-token.outputs.available == 'true'
+        run: |
           rm -rf "$CANIO_CLOUD_DIR"
           git clone --depth 1 \
             "https://x-access-token:${CANIO_CROSS_REPO_TOKEN}@github.com/oxhq/canio-cloud.git" \
             "$CANIO_CLOUD_DIR"
 
       - name: Setup PHP
+        if: steps.cross-repo-token.outputs.available == 'true'
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.4"
@@ -44,25 +51,30 @@ jobs:
           extensions: intl, zip
 
       - name: Setup Node
+        if: steps.cross-repo-token.outputs.available == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: "22"
 
       - name: Install Canio Cloud dependencies
+        if: steps.cross-repo-token.outputs.available == 'true'
         working-directory: ${{ env.CANIO_CLOUD_DIR }}
         run: composer install --no-interaction --prefer-dist
 
       - name: Setup Go
+        if: steps.cross-repo-token.outputs.available == 'true'
         uses: actions/setup-go@v6
         with:
           go-version-file: ${{ env.CANIO_PACKAGE_DIR }}/runtime/stagehand/go.mod
           cache-dependency-path: ${{ env.CANIO_PACKAGE_DIR }}/runtime/stagehand/go.sum
 
       - name: Setup Chrome
+        if: steps.cross-repo-token.outputs.available == 'true'
         id: setup-chrome
         uses: browser-actions/setup-chrome@v2
 
       - name: Run cross-repo contract smoke
+        if: steps.cross-repo-token.outputs.available == 'true'
         env:
           CANIO_CHROMIUM_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
           CANIO_CHROMIUM_NO_SANDBOX: "true"
