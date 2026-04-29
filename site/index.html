@@ -32,7 +32,7 @@
           </p>
           <div class="cta-row">
             <a class="button button-primary" href="./install/">Install Canio</a>
-            <a class="button button-secondary" href="https://github.com/oxhq/canio/releases/tag/v1.0.1">View v1.0.1</a>
+            <a class="button button-secondary" href="https://github.com/oxhq/canio/releases/tag/v1.0.4">View v1.0.4</a>
           </div>
           <pre class="code-block"><code>composer require oxhq/canio
 php artisan canio:install</code></pre>
@@ -45,7 +45,7 @@ php artisan canio:install</code></pre>
           </article>
           <article class="card">
             <h2>What it does</h2>
-            <p>It renders through Stagehand, runs JavaScript before capture, supports explicit readiness, and keeps artifacts for debugging and replay.</p>
+            <p>It renders through the Stagehand runtime, installs a managed Chrome for Testing bundle for local rendering, and uses Rod as the default local browser driver.</p>
           </article>
           <article class="card">
             <h2>Where it wins</h2>
@@ -63,6 +63,8 @@ php artisan canio:install</code></pre>
               <h3>Use Canio</h3>
               <ul>
                 <li>Real Chromium layout</li>
+                <li>Managed Chrome for Testing install</li>
+                <li>Rod-backed local renderer by default</li>
                 <li>JavaScript before capture</li>
                 <li><code>window.__CANIO_READY__</code> support</li>
                 <li>Artifacts, jobs, replay, and runtime ops</li>
@@ -91,6 +93,10 @@ php artisan canio:install</code></pre>
           <a class="link-card" href="https://github.com/oxhq/canio/blob/main/docs/benchmark-summary.md">
             <span class="link-label">Benchmarks</span>
             <strong>Fidelity, fairness, and JavaScript-capability summary</strong>
+          </a>
+          <a class="link-card" href="https://github.com/oxhq/canio/releases/tag/v1.0.4">
+            <span class="link-label">Release</span>
+            <strong>v1.0.4 runtime bundle, Rod default, and Windows save fix</strong>
           </a>
         </section>
       </main>

@@ -197,7 +197,7 @@ final class CanioManager
         $result = $this->render($render->withOutputMode('inline', basename($path)));
         $bytes = $result->pdfBytes();
 
-        if ($disk === null && str_starts_with($path, DIRECTORY_SEPARATOR)) {
+        if ($disk === null && $this->isAbsolutePath($path)) {
             File::ensureDirectoryExists(dirname($path));
             File::put($path, $bytes);
 
@@ -258,6 +258,11 @@ final class CanioManager
         $defaults = $this->config['defaults'] ?? [];
 
         return is_array($defaults) ? $defaults : [];
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return preg_match('/^(?:[A-Za-z]:[\\\\\/]|\\\\\\\\|\/)/', $path) === 1;
     }
 
     private function prepareRenderSpec(PendingRender $render): RenderSpec

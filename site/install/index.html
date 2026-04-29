@@ -26,7 +26,8 @@
 php artisan canio:install</code></pre>
         <p>
           The install command publishes config, downloads the matching Stagehand binary,
-          verifies checksums, and runs a local doctor check.
+          verifies checksums, installs a Chrome for Testing browser bundle for local
+          renderers, and runs a local doctor check.
         </p>
 
         <h2>First render</h2>
@@ -40,12 +41,25 @@ return Canio::view('pdf.invoice', ['invoice' =&gt; $invoice])
         <h2>What happens by default</h2>
         <ul>
           <li>Canio runs in <code>embedded</code> mode unless you configure otherwise.</li>
+          <li>Stagehand uses the Rod-backed <code>rod-cdp</code> renderer by default.</li>
+          <li>The browser bundle defaults to full Chrome for Testing <code>chrome</code>.</li>
           <li>The package auto-starts the local runtime on first render when needed.</li>
           <li>The Laravel-facing API stays native: <code>view()</code>, <code>html()</code>, and <code>url()</code>.</li>
         </ul>
 
+        <h2>Browser bundle commands</h2>
+        <pre class="code-block"><code>php artisan canio:browser:install
+php artisan canio:browser:repair
+php artisan canio:doctor</code></pre>
+        <p>
+          Use <code>CANIO_RENDERER_DRIVER=local-cdp</code> to fall back to direct CDP,
+          or <code>CANIO_RENDERER_DRIVER=remote-cdp</code> when Chrome runs outside
+          the Laravel host.
+        </p>
+
         <h2>Next steps</h2>
         <ul>
+          <li>Read the <a href="https://github.com/oxhq/canio/releases/tag/v1.0.4">v1.0.4 release notes</a>.</li>
           <li>Read the <a href="../deploy/">deployment guide</a> before production rollout.</li>
           <li>Check the <a href="https://github.com/oxhq/canio/blob/main/packages/laravel/README.md">full package README</a> for commands and operations.</li>
         </ul>

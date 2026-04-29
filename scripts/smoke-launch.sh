@@ -185,6 +185,19 @@ prepare_package_repo() {
   git -C "$repo_dir" tag -a "$RUNTIME_RELEASE_VERSION" -m "$RUNTIME_RELEASE_VERSION"
 }
 
+file_uri_for_path() {
+  local path="$1"
+
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*|Windows_NT)
+      printf 'file:///%s\n' "$(cygpath -am "$path")"
+      ;;
+    *)
+      printf 'file://%s\n' "$path"
+      ;;
+  esac
+}
+
 wait_for_http() {
   local url="$1"
   local attempts="${2:-30}"
@@ -428,7 +441,7 @@ main() {
 
   if [[ "$PACKAGE_SOURCE_MODE" == "vcs" && -z "$package_source_url" ]]; then
     prepare_package_repo "$package_repo_dir"
-    package_source_url="file://$package_repo_dir"
+    package_source_url="$(file_uri_for_path "$package_repo_dir")"
   fi
 
   prepare_release_asset "$release_root" "$asset_os" "$asset_arch" "$asset_ext" >/dev/null

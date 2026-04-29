@@ -18,10 +18,10 @@ it('downloads and installs the matching stagehand binary', function () {
     config()->set('canio.runtime.release.base_url', 'https://github.com');
 
     Http::fake([
-        'https://github.com/oxhq/canio/releases/download/v1.0.3/checksums.txt' => Http::response(
-            "{$checksum}  stagehand_v1.0.3_linux_amd64\n",
+        'https://github.com/oxhq/canio/releases/download/v1.0.4/checksums.txt' => Http::response(
+            "{$checksum}  stagehand_v1.0.4_linux_amd64\n",
         ),
-        'https://github.com/oxhq/canio/releases/download/v1.0.3/stagehand_v1.0.3_linux_amd64' => Http::response(
+        'https://github.com/oxhq/canio/releases/download/v1.0.4/stagehand_v1.0.4_linux_amd64' => Http::response(
             $contents,
             200,
             ['Content-Type' => 'application/octet-stream'],
@@ -29,20 +29,20 @@ it('downloads and installs the matching stagehand binary', function () {
     ]);
 
     $this->artisan('canio:runtime:install', [
-        'version' => 'v1.0.3',
+        'version' => 'v1.0.4',
         '--path' => $binaryPath,
         '--os' => 'linux',
         '--arch' => 'amd64',
     ])
-        ->expectsOutput('Downloading v1.0.3 for linux/amd64...')
-        ->expectsOutput(sprintf('Installed Stagehand v1.0.3 to %s', $binaryPath))
+        ->expectsOutput('Downloading v1.0.4 for linux/amd64...')
+        ->expectsOutput(sprintf('Installed Stagehand v1.0.4 to %s', $binaryPath))
         ->assertSuccessful();
 
     expect(File::exists($binaryPath))->toBeTrue()
         ->and(File::get($binaryPath))->toBe($contents);
 
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'checksums.txt'));
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'stagehand_v1.0.3_linux_amd64'));
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'stagehand_v1.0.4_linux_amd64'));
 
     File::deleteDirectory($directory);
 });

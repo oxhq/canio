@@ -82,7 +82,7 @@ Cloud is an optional paid layer on top of the package. It is not part of the req
 - Public docs: [oxhq.github.io/canio](https://oxhq.github.io/canio/)
 - Package install and usage: [packages/laravel/README.md](packages/laravel/README.md)
 - Launch announcement: [docs/announcements/v1.0.0.md](docs/announcements/v1.0.0.md)
-- Latest release notes: [docs/releases/v1.0.3.md](docs/releases/v1.0.3.md)
+- Latest release notes: [docs/releases/v1.0.4.md](docs/releases/v1.0.4.md)
 - Public benchmark summary: [docs/benchmark-summary.md](docs/benchmark-summary.md)
 - Production deployment guide: [docs/deployment.md](docs/deployment.md)
 - Contributor setup: [docs/development.md](docs/development.md)
@@ -92,7 +92,7 @@ Cloud is an optional paid layer on top of the package. It is not part of the req
 
 ## Status
 
-The current stable release line for the Laravel package is `v1.0.3`.
+The current stable release line for the Laravel package is `v1.0.4`.
 
 That means:
 

@@ -24,10 +24,13 @@
         <h1>Choose the right runtime shape for production.</h1>
 
         <h2>Embedded</h2>
-        <p>Use embedded mode when the Laravel host can run Chromium locally and you want the shortest path from install to first successful render.</p>
+        <p>Use embedded mode when the Laravel host can run Chrome locally and you want the shortest path from install to first successful render.</p>
         <pre class="code-block"><code>CANIO_RUNTIME_MODE=embedded
 CANIO_RUNTIME_AUTO_INSTALL=true
 CANIO_RUNTIME_AUTO_START=true
+CANIO_RENDERER_DRIVER=rod-cdp
+CANIO_BROWSER_PRODUCT=chrome
+CANIO_BROWSER_INSTALL_PATH=/var/lib/canio/browsers
 CANIO_RUNTIME_STATE_PATH=/var/lib/canio
 CANIO_RUNTIME_LOG_PATH=/var/log/canio/stagehand.log</code></pre>
 
@@ -37,9 +40,19 @@ CANIO_RUNTIME_LOG_PATH=/var/log/canio/stagehand.log</code></pre>
 CANIO_RUNTIME_BASE_URL=http://stagehand.internal:9514
 CANIO_RUNTIME_STARTUP_TIMEOUT=30</code></pre>
 
+        <h2>Remote browser endpoint</h2>
+        <p>Use remote CDP when Laravel should keep Stagehand local but Chrome should run in a container, render farm, or browserless-style service.</p>
+        <pre class="code-block"><code>CANIO_RENDERER_DRIVER=remote-cdp
+CANIO_REMOTE_CDP_ENDPOINT=ws://chrome-renderer.internal:9222/devtools/browser/&lt;id&gt;</code></pre>
+
+        <h2>Direct CDP fallback</h2>
+        <p>Rod is the default local renderer in v1.0.4. Use direct CDP only as an explicit fallback after validating your documents.</p>
+        <pre class="code-block"><code>CANIO_RENDERER_DRIVER=local-cdp</code></pre>
+
         <h2>Operational checks</h2>
         <ul>
-          <li>Make Chromium availability explicit on the runtime host.</li>
+          <li>Make Chrome availability explicit on the runtime host.</li>
+          <li>Run <code>php artisan canio:browser:install</code> or set <code>CANIO_CHROMIUM_PATH</code>.</li>
           <li>Persist runtime state if artifacts, jobs, and replay matter.</li>
           <li>Route Stagehand logs into your normal logging pipeline.</li>
           <li>Only set <code>CANIO_CHROMIUM_NO_SANDBOX=true</code> when the environment requires it.</li>

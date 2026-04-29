@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.4] - 2026-04-29
+
+Windows consumer-path patch.
+
+- fixed absolute filesystem saves such as `C:\path\invoice.pdf` so they write directly to the local filesystem instead of being treated as Laravel disk keys
+- kept the Rod-backed Stagehand renderer, managed Chrome for Testing install, and remote-CDP production path from `v1.0.3`
+
+For full monorepo release notes, see:
+
+- [oxhq/canio release notes](https://github.com/oxhq/canio/blob/main/docs/releases/v1.0.4.md)
+
 ## [1.0.3] - 2026-04-29
 
 Renderer and runtime packaging hardening.
