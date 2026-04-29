@@ -30,6 +30,8 @@ it('applies production-safe defaults when runtime settings are omitted', functio
 
         expect($command)->toContain('--ignore-https-errors=false')
             ->toContain('--allow-private-targets=false')
+            ->toContain('--renderer-driver')
+            ->toContain('rod-cdp')
             ->toContain('--job-backend')
             ->toContain('redis')
             ->toContain('--auth-shared-secret')
@@ -63,6 +65,12 @@ it('forwards navigation policy and explicit runtime overrides to stagehand', fun
             'chromium' => [
                 'ignore_https_errors' => true,
             ],
+            'renderer' => [
+                'driver' => 'remote-cdp',
+                'remote_cdp' => [
+                    'endpoint' => 'ws://127.0.0.1:9222/devtools/browser/test',
+                ],
+            ],
             'navigation' => [
                 'allowed_hosts' => 'example.com,*.example.com',
                 'allow_private_targets' => true,
@@ -77,12 +85,105 @@ it('forwards navigation policy and explicit runtime overrides to stagehand', fun
 
         expect($command)->toContain('--ignore-https-errors=true')
             ->toContain('--allow-private-targets=true')
+            ->toContain('--renderer-driver')
+            ->toContain('remote-cdp')
+            ->toContain('--remote-cdp-endpoint')
+            ->toContain('ws://127.0.0.1:9222/devtools/browser/test')
             ->toContain('--allowed-target-hosts')
             ->toContain('example.com,*.example.com')
             ->toContain('--job-backend')
             ->toContain('redis')
             ->toContain('--auth-shared-secret')
             ->toContain('runtime-secret');
+    } finally {
+        File::deleteDirectory($workspace);
+    }
+});
+
+it('uses an installed browser bundle when chromium path is not configured', function () {
+    config()->set('app.env', 'local');
+
+    $workspace = sys_get_temp_dir().'/canio-serve-builder-'.bin2hex(random_bytes(6));
+    $binaryPath = $workspace.'/bin/stagehand'.(PHP_OS_FAMILY === 'Windows' ? '.bat' : '');
+    $browserPath = $workspace.'/browsers/chrome-linux64/chrome';
+
+    File::ensureDirectoryExists(dirname($binaryPath));
+    File::put($binaryPath, PHP_OS_FAMILY === 'Windows' ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n");
+    @chmod($binaryPath, 0755);
+
+    File::ensureDirectoryExists(dirname($browserPath));
+    File::put($browserPath, '#!/bin/sh'.PHP_EOL.'exit 0'.PHP_EOL);
+    @chmod($browserPath, 0755);
+
+    File::put($workspace.'/browsers/manifest.json', json_encode([
+        'version' => '123.0.6312.86',
+        'channel' => 'Stable',
+        'platform' => 'linux64',
+        'executablePath' => $browserPath,
+    ], JSON_THROW_ON_ERROR));
+
+    $builder = app(StagehandServeCommandBuilder::class);
+
+    try {
+        $command = $builder->build([
+            'binary' => $binaryPath,
+            'working_directory' => $workspace,
+            'state_path' => $workspace.'/state',
+            'log_path' => $workspace.'/logs/runtime.log',
+            'browser' => [
+                'install_path' => $workspace.'/browsers',
+            ],
+        ]);
+
+        expect($command)->toContain('--chromium-path')
+            ->toContain($browserPath);
+    } finally {
+        File::deleteDirectory($workspace);
+    }
+});
+
+it('passes installed browser bundles to the rod renderer driver', function () {
+    config()->set('app.env', 'local');
+
+    $workspace = sys_get_temp_dir().'/canio-serve-builder-'.bin2hex(random_bytes(6));
+    $binaryPath = $workspace.'/bin/stagehand'.(PHP_OS_FAMILY === 'Windows' ? '.bat' : '');
+    $browserPath = $workspace.'/browsers/chrome-linux64/chrome';
+
+    File::ensureDirectoryExists(dirname($binaryPath));
+    File::put($binaryPath, PHP_OS_FAMILY === 'Windows' ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n");
+    @chmod($binaryPath, 0755);
+
+    File::ensureDirectoryExists(dirname($browserPath));
+    File::put($browserPath, '#!/bin/sh'.PHP_EOL.'exit 0'.PHP_EOL);
+    @chmod($browserPath, 0755);
+
+    File::put($workspace.'/browsers/manifest.json', json_encode([
+        'version' => '123.0.6312.86',
+        'channel' => 'Stable',
+        'platform' => 'linux64',
+        'executablePath' => $browserPath,
+    ], JSON_THROW_ON_ERROR));
+
+    $builder = app(StagehandServeCommandBuilder::class);
+
+    try {
+        $command = $builder->build([
+            'binary' => $binaryPath,
+            'working_directory' => $workspace,
+            'state_path' => $workspace.'/state',
+            'log_path' => $workspace.'/logs/runtime.log',
+            'browser' => [
+                'install_path' => $workspace.'/browsers',
+            ],
+            'renderer' => [
+                'driver' => 'rod-cdp',
+            ],
+        ]);
+
+        expect($command)->toContain('--renderer-driver')
+            ->toContain('rod-cdp')
+            ->toContain('--chromium-path')
+            ->toContain($browserPath);
     } finally {
         File::deleteDirectory($workspace);
     }

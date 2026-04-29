@@ -22,6 +22,7 @@ The second command is recommended for deployment and validation because it:
 
 - publishes the default config
 - downloads the matching Stagehand binary
+- downloads the Chrome for Testing browser bundle for local CDP rendering
 - verifies release checksums
 - runs a local doctor check
 
@@ -103,8 +104,46 @@ If the first render fails, check these first:
 
 1. Run `php artisan canio:doctor`
 2. Confirm `php artisan canio:install` succeeded
-3. If the host needs an explicit browser path, set `CANIO_CHROMIUM_PATH`
+3. Confirm `php artisan canio:browser:install` succeeded, or set `CANIO_CHROMIUM_PATH`
 4. In locked-down Linux environments, you may also need `CANIO_CHROMIUM_NO_SANDBOX=true`
+
+Stagehand uses the Rod-backed native renderer by default:
+
+```dotenv
+CANIO_RENDERER_DRIVER=rod-cdp
+CANIO_BROWSER_PRODUCT=chrome
+CANIO_BROWSER_CHANNEL=Stable
+CANIO_BROWSER_INSTALL_PATH=/var/lib/canio/browsers
+```
+
+`chrome` is the default browser product because Canio optimizes for browser-real PDF fidelity. `chrome-headless-shell` is available for controlled environments that prefer the lighter old-headless shell tradeoff:
+
+```dotenv
+CANIO_BROWSER_PRODUCT=chrome-headless-shell
+```
+
+To fall back to the direct CDP renderer without changing Laravel integration code:
+
+```dotenv
+CANIO_RENDERER_DRIVER=local-cdp
+CANIO_BROWSER_INSTALL_PATH=/var/lib/canio/browsers
+```
+
+Useful browser bundle commands:
+
+```bash
+php artisan canio:browser:install
+php artisan canio:browser:install --product=chrome-headless-shell
+php artisan canio:browser:install 123.0.6312.86 --platform=linux64
+php artisan canio:browser:repair
+```
+
+If the app server should use an external Chrome/CDP service instead of launching local Chromium:
+
+```dotenv
+CANIO_RENDERER_DRIVER=remote-cdp
+CANIO_REMOTE_CDP_ENDPOINT=ws://chrome-renderer.internal:9222/devtools/browser/<id>
+```
 
 If you want a self-hosted runtime instead of embedded mode:
 

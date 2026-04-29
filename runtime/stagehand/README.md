@@ -17,6 +17,9 @@ This first scaffold keeps the runtime intentionally small while locking the oper
 
 ```bash
 go run ./cmd/stagehand serve --browser-pool-size 2 --browser-pool-warm 1
+go run ./cmd/stagehand serve --renderer-driver rod-cdp
+go run ./cmd/stagehand serve --renderer-driver local-cdp
+go run ./cmd/stagehand serve --renderer-driver remote-cdp --remote-cdp-endpoint ws://127.0.0.1:9222/devtools/browser/<id>
 go run ./cmd/stagehand serve --job-backend redis --job-redis-host 127.0.0.1 --job-redis-port 6379
 go run ./cmd/stagehand serve --job-backend redis --job-lease-timeout 45 --job-heartbeat-interval 10
 go run ./cmd/stagehand serve --auth-shared-secret secret-123 --event-webhook-url http://127.0.0.1:8000/canio/webhooks/stagehand/jobs --event-webhook-secret hook-secret
@@ -59,6 +62,21 @@ When `debug.enabled` or `debug.watch` is active, the artifact directory now incl
 - the final PDF
 
 If `--user-data-dir` is set, Stagehand treats it as the base directory for per-browser pool profiles so multiple warmed browsers can run in parallel without profile lock conflicts.
+
+## Renderer Drivers
+
+Stagehand currently supports three renderer drivers:
+
+- `rod-cdp`: the default native-Go path. Stagehand uses Rod for local browser process management and render operations while preserving the same `RenderSpec -> RenderResult` contract.
+- `local-cdp`: direct CDP fallback. Stagehand launches local Chrome/Chromium and controls it through Chrome DevTools Protocol.
+- `remote-cdp`: Stagehand connects to an existing Chrome/CDP endpoint through `--remote-cdp-endpoint`.
+
+All drivers keep the same render contract, artifact storage, queue behavior, and Laravel API. Use `remote-cdp` when the app host should not install or supervise Chromium directly.
+
+`rod-cdp` is validated by browser runtime tests for allocator startup/cleanup lifecycle, pool reuse and eviction behavior, HTML-to-PDF smoke parity against `local-cdp`, and Rod-native debug artifacts for screenshots, DOM snapshots, and console capture.
+Treat it as the guarded default while platform and failure-mode coverage continue to expand.
+
+When Stagehand is launched through the Laravel package, `php artisan canio:browser:install` can install a Chrome for Testing bundle and the package passes its executable path through `--chromium-path`. Both `local-cdp` and `rod-cdp` can use that bundled browser. Stagehand itself stays focused on rendering and process control.
 
 Async jobs are persisted under `state/jobs/<jobId>/` with the submitted `render-spec.json` plus `job.json`, so completed jobs can still be queried after a runtime restart and interrupted jobs are marked as failed on boot.
 

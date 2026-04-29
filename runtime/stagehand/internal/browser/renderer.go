@@ -15,6 +15,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	cdpruntime "github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
+	"github.com/go-rod/rod"
 	"github.com/oxhq/canio/runtime/stagehand/internal/config"
 	"github.com/oxhq/canio/runtime/stagehand/internal/contracts"
 )
@@ -68,6 +69,10 @@ func (r *Renderer) Render(ctx context.Context, spec contracts.RenderSpec) ([]byt
 	}()
 	timings["acquireMs"] = time.Since(startedAt).Milliseconds()
 
+	if rodPage := rodPageFromProcess(lease.Browser()); rodPage != nil {
+		return r.renderWithRod(renderCtx, spec, lease.ID(), rodPage, timings, renderStart)
+	}
+
 	runCtx, runCancel := bindContext(renderCtx, lease.Browser().Context())
 	defer runCancel()
 
@@ -108,6 +113,23 @@ func (r *Renderer) Render(ctx context.Context, spec contracts.RenderSpec) ([]byt
 	timings["renderMs"] = time.Since(renderStart).Milliseconds()
 
 	return pdfData, warnings, debugArtifacts, timings, nil
+}
+
+type rodBackedProcess interface {
+	RodPage() *rod.Page
+}
+
+func rodPageFromProcess(process BrowserProcess) *rod.Page {
+	if process == nil {
+		return nil
+	}
+
+	rodProcess, ok := process.(rodBackedProcess)
+	if !ok {
+		return nil
+	}
+
+	return rodProcess.RodPage()
 }
 
 func (r *Renderer) Status() PoolStatus {

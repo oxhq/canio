@@ -35,6 +35,10 @@ CANIO_RUNTIME_AUTO_INSTALL=true
 CANIO_RUNTIME_AUTO_START=true
 CANIO_RUNTIME_STATE_PATH=/var/lib/canio
 CANIO_RUNTIME_LOG_PATH=/var/log/canio/stagehand.log
+CANIO_RENDERER_DRIVER=rod-cdp
+CANIO_BROWSER_PRODUCT=chrome
+CANIO_BROWSER_INSTALL_PATH=/var/lib/canio/browsers
+CANIO_BROWSER_CHANNEL=Stable
 CANIO_CHROMIUM_PATH=/usr/bin/google-chrome
 CANIO_CHROMIUM_NO_SANDBOX=false
 ```
@@ -43,8 +47,30 @@ Operational notes:
 
 - keep `CANIO_RUNTIME_STATE_PATH` on persistent storage if you care about artifacts, jobs, and replay data
 - set `CANIO_RUNTIME_LOG_PATH` to a path collected by your normal host logging pipeline
-- if Chromium is not on a standard path, set `CANIO_CHROMIUM_PATH`
+- run `php artisan canio:browser:install` to install a managed Chrome for Testing bundle, or set `CANIO_CHROMIUM_PATH` to an existing Chrome/Chromium binary
+- run `php artisan canio:browser:repair` when the bundle manifest points at a missing or broken executable
+- keep `CANIO_BROWSER_PRODUCT=chrome` for the default high-fidelity browser path; use `chrome-headless-shell` only after validating your own documents against that lighter old-headless runtime
 - only set `CANIO_CHROMIUM_NO_SANDBOX=true` in environments that require it
+
+Use `remote-cdp` when the Laravel app host should not install or supervise Chrome directly:
+
+```dotenv
+CANIO_RUNTIME_MODE=embedded
+CANIO_RENDERER_DRIVER=remote-cdp
+CANIO_REMOTE_CDP_ENDPOINT=ws://chrome-renderer.internal:9222/devtools/browser/<id>
+```
+
+In this mode Stagehand still owns the render contract, queues, artifacts, retries, and status endpoints. Only the browser process moves outside the local runtime.
+
+Use `local-cdp` when you need to fall back to the direct CDP local renderer:
+
+```dotenv
+CANIO_RUNTIME_MODE=embedded
+CANIO_RENDERER_DRIVER=local-cdp
+CANIO_BROWSER_INSTALL_PATH=/var/lib/canio/browsers
+```
+
+Both local drivers still require a local Chrome/Chromium binary. The Laravel browser bundle installer can provide it, and Stagehand keeps the same render contract across Rod, direct CDP, and remote CDP.
 
 ## Choose Remote When
 

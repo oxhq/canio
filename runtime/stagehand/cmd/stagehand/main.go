@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,6 +68,7 @@ func runServe(args []string) int {
 	fs.IntVar(&cfg.RequestBodyLimitBytes, "request-body-limit-bytes", cfg.RequestBodyLimitBytes, "Maximum size in bytes accepted for JSON request bodies")
 	fs.StringVar(&cfg.AllowedTargetHosts, "allowed-target-hosts", cfg.AllowedTargetHosts, "Comma-separated host allowlist for URL/baseUrl navigation. Empty allows any public host.")
 	fs.BoolVar(&cfg.AllowPrivateTargets, "allow-private-targets", cfg.AllowPrivateTargets, "Allow navigation to loopback, RFC1918, and otherwise private network targets")
+	applyRendererFlags(fs, &cfg)
 	fs.StringVar(&cfg.ChromiumPath, "chromium-path", "", "Optional Chromium or Chrome executable path")
 	fs.StringVar(&cfg.UserDataDir, "user-data-dir", "", "Optional Chromium user data directory")
 	fs.BoolVar(&cfg.Headless, "headless", cfg.Headless, "Run Chromium in headless mode")
@@ -116,6 +118,8 @@ func runServe(args []string) int {
 		"request_body_limit_bytes":   cfg.RequestBodyLimitBytes,
 		"allowed_target_hosts":       cfg.AllowedTargetHosts,
 		"allow_private_targets":      cfg.AllowPrivateTargets,
+		"renderer_driver":            cfg.RendererDriver,
+		"remote_cdp_endpoint":        redactEndpoint(cfg.RemoteCDPEndpoint),
 		"event_webhook_max_attempts": cfg.EventWebhookMaxAttempts,
 		"event_webhook_backoff_ms":   cfg.EventWebhookBackoffMs,
 	})
@@ -174,6 +178,7 @@ func runRender(args []string) int {
 	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "Structured log output format: json or text")
 	fs.StringVar(&cfg.AllowedTargetHosts, "allowed-target-hosts", cfg.AllowedTargetHosts, "Comma-separated host allowlist for URL/baseUrl navigation. Empty allows any public host.")
 	fs.BoolVar(&cfg.AllowPrivateTargets, "allow-private-targets", cfg.AllowPrivateTargets, "Allow navigation to loopback, RFC1918, and otherwise private network targets")
+	applyRendererFlags(fs, &cfg)
 	fs.StringVar(&cfg.ChromiumPath, "chromium-path", "", "Optional Chromium or Chrome executable path")
 	fs.StringVar(&cfg.UserDataDir, "user-data-dir", "", "Optional Chromium user data directory")
 	fs.BoolVar(&cfg.Headless, "headless", cfg.Headless, "Run Chromium in headless mode")
@@ -230,6 +235,7 @@ func runReplay(args []string) int {
 	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "Structured log output format: json or text")
 	fs.StringVar(&cfg.AllowedTargetHosts, "allowed-target-hosts", cfg.AllowedTargetHosts, "Comma-separated host allowlist for URL/baseUrl navigation. Empty allows any public host.")
 	fs.BoolVar(&cfg.AllowPrivateTargets, "allow-private-targets", cfg.AllowPrivateTargets, "Allow navigation to loopback, RFC1918, and otherwise private network targets")
+	applyRendererFlags(fs, &cfg)
 	fs.StringVar(&cfg.ChromiumPath, "chromium-path", "", "Optional Chromium or Chrome executable path")
 	fs.StringVar(&cfg.UserDataDir, "user-data-dir", "", "Optional Chromium user data directory")
 	fs.BoolVar(&cfg.Headless, "headless", cfg.Headless, "Run Chromium in headless mode")
@@ -546,6 +552,29 @@ func applyPoolFlags(fs *flag.FlagSet, cfg *config.RuntimeConfig) {
 	fs.IntVar(&cfg.RedisDB, "job-redis-db", cfg.RedisDB, "Redis database for the jobs backend")
 	fs.StringVar(&cfg.RedisQueueKey, "job-redis-queue-key", cfg.RedisQueueKey, "Redis list key used by the jobs backend")
 	fs.IntVar(&cfg.RedisBlockTimeout, "job-redis-block-timeout", cfg.RedisBlockTimeout, "Seconds each Redis worker blocks while waiting for a queued job")
+}
+
+func applyRendererFlags(fs *flag.FlagSet, cfg *config.RuntimeConfig) {
+	fs.StringVar(&cfg.RendererDriver, "renderer-driver", cfg.RendererDriver, "Renderer driver: rod-cdp, local-cdp, or remote-cdp")
+	fs.StringVar(&cfg.RemoteCDPEndpoint, "remote-cdp-endpoint", cfg.RemoteCDPEndpoint, "Remote Chrome DevTools Protocol endpoint for the remote-cdp renderer driver")
+}
+
+func redactEndpoint(endpoint string) string {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "[configured]"
+	}
+
+	if parsed.User != nil {
+		parsed.User = url.UserPassword("[redacted]", "[redacted]")
+	}
+
+	return parsed.String()
 }
 
 func printUsage() {

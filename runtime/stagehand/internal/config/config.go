@@ -12,6 +12,8 @@ type RuntimeConfig struct {
 	RequestBodyLimitBytes   int
 	AllowedTargetHosts      string
 	AllowPrivateTargets     bool
+	RendererDriver          string
+	RemoteCDPEndpoint       string
 	ChromiumPath            string
 	UserDataDir             string
 	Headless                bool
@@ -57,6 +59,7 @@ func Default() RuntimeConfig {
 		RequestBodyLimitBytes:   5 * 1024 * 1024,
 		AllowedTargetHosts:      "",
 		AllowPrivateTargets:     false,
+		RendererDriver:          "rod-cdp",
 		Headless:                true,
 		DisableSandbox:          false,
 		IgnoreHTTPSErrors:       false,

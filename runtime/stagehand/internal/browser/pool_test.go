@@ -3,10 +3,13 @@ package browser
 import (
 	"context"
 	"errors"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/oxhq/canio/runtime/stagehand/internal/config"
 )
 
 type testProcess struct {
@@ -383,4 +386,79 @@ func waitForPoolStat(t *testing.T, pool *Pool, predicate func(Stats) bool) {
 	}
 
 	t.Fatalf("condition not reached before timeout; stats=%+v", pool.Stats())
+}
+
+func TestPoolRodCDPAcquireReleaseAndReacquire(t *testing.T) {
+	if !browserAvailable() {
+		t.Skip("Chrome/Chromium is not available on this machine")
+	}
+
+	cfg := testRuntimeConfig()
+	cfg.RendererDriver = rendererDriverRodCDP
+
+	pool, err := NewPool(processFactory{config: cfg}, Options{MaxBrowsers: 1, QueueDepth: 1})
+	if err != nil {
+		t.Fatalf("NewPool returned error: %v", err)
+	}
+	defer pool.Close()
+
+	first, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("Acquire returned error: %v", err)
+	}
+
+	firstID := first.ID()
+	if err := first.Release(); err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+
+	second, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("Acquire returned error: %v", err)
+	}
+	defer second.Release()
+
+	if second.ID() != firstID {
+		t.Fatalf("expected pooled rod-cdp slot reuse, got first=%d second=%d", firstID, second.ID())
+	}
+}
+
+func TestPoolRodCDPEvictsClosedLeaseOnRelease(t *testing.T) {
+	if !browserAvailable() {
+		t.Skip("Chrome/Chromium is not available on this machine")
+	}
+
+	cfg := config.Default()
+	if os.Getenv("CI") != "" {
+		cfg.DisableSandbox = true
+	}
+	cfg.RendererDriver = rendererDriverRodCDP
+
+	pool, err := NewPool(processFactory{config: cfg}, Options{MaxBrowsers: 1, QueueDepth: 1})
+	if err != nil {
+		t.Fatalf("NewPool returned error: %v", err)
+	}
+	defer pool.Close()
+
+	lease, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("Acquire returned error: %v", err)
+	}
+
+	firstID := lease.ID()
+	lease.Browser().Close()
+
+	if err := lease.Release(); err != nil {
+		t.Fatalf("Release returned error: %v", err)
+	}
+
+	next, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("Acquire returned error: %v", err)
+	}
+	defer next.Release()
+
+	if next.ID() == firstID {
+		t.Fatalf("expected closed rod-cdp lease to be evicted, got slot id reuse %d", firstID)
+	}
 }

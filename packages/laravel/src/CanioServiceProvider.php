@@ -8,6 +8,8 @@ use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Support\ServiceProvider;
 use Oxhq\Canio\Bridge\CloudStagehandClient;
 use Oxhq\Canio\Bridge\HttpStagehandClient;
+use Oxhq\Canio\Console\CanioBrowserInstallCommand;
+use Oxhq\Canio\Console\CanioBrowserRepairCommand;
 use Oxhq\Canio\Console\CanioDoctorCommand;
 use Oxhq\Canio\Console\CanioInstallCommand;
 use Oxhq\Canio\Console\CanioRuntimeArtifactCommand;
@@ -26,6 +28,8 @@ use Oxhq\Canio\Console\CanioServeCommand;
 use Oxhq\Canio\Contracts\CanioCloudSyncer;
 use Oxhq\Canio\Contracts\StagehandClient;
 use Oxhq\Canio\Contracts\StagehandRuntimeBootstrapper;
+use Oxhq\Canio\Support\BrowserBundleInstaller;
+use Oxhq\Canio\Support\BrowserBundleResolver;
 use Oxhq\Canio\Support\CanioCloudRequestor;
 use Oxhq\Canio\Support\CanioCloudSyncFailureRecorder;
 use Oxhq\Canio\Support\EmbeddedStagehandRuntimeBootstrapper;
@@ -48,6 +52,8 @@ final class CanioServiceProvider extends ServiceProvider
         $this->app->singleton(StagehandBinaryCompatibility::class);
         $this->app->singleton(StagehandBinaryResolver::class);
         $this->app->singleton(StagehandReleaseInstaller::class);
+        $this->app->singleton(BrowserBundleResolver::class);
+        $this->app->singleton(BrowserBundleInstaller::class);
         $this->app->singleton(StagehandServeCommandBuilder::class);
         $this->app->singleton(StagehandProcessLauncher::class);
         $this->app->singleton(StagehandHealthProbe::class);
@@ -136,6 +142,8 @@ final class CanioServiceProvider extends ServiceProvider
             $this->commands([
                 CanioInstallCommand::class,
                 CanioDoctorCommand::class,
+                CanioBrowserInstallCommand::class,
+                CanioBrowserRepairCommand::class,
                 CanioServeCommand::class,
                 CanioRuntimeInstallCommand::class,
                 CanioRuntimeStatusCommand::class,

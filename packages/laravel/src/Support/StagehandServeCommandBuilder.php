@@ -10,6 +10,7 @@ final class StagehandServeCommandBuilder
 {
     public function __construct(
         private readonly StagehandBinaryResolver $resolver,
+        private readonly ?BrowserBundleResolver $browserBundleResolver = null,
     ) {}
 
     /**
@@ -24,12 +25,17 @@ final class StagehandServeCommandBuilder
         $statePath = (string) ($runtime['state_path'] ?? storage_path('app/canio/runtime'));
         $logPath = (string) ($runtime['log_path'] ?? storage_path('logs/canio-runtime.log'));
         $chromiumPath = trim((string) data_get($runtime, 'chromium.path', ''));
+        if ($chromiumPath === '') {
+            $chromiumPath = (string) (($this->browserBundleResolver ?? new BrowserBundleResolver)->executablePath($runtime) ?? '');
+        }
         $userDataDir = trim((string) data_get($runtime, 'chromium.user_data_dir', ''));
         $headless = (bool) data_get($runtime, 'chromium.headless', true);
         $noSandbox = (bool) data_get($runtime, 'chromium.no_sandbox', false);
         $ignoreHttpsErrors = (bool) data_get($runtime, 'chromium.ignore_https_errors', false);
         $allowedTargetHosts = trim((string) data_get($runtime, 'navigation.allowed_hosts', ''));
         $allowPrivateTargets = (bool) data_get($runtime, 'navigation.allow_private_targets', $this->defaultAllowPrivateTargets());
+        $rendererDriver = trim((string) data_get($runtime, 'renderer.driver', 'rod-cdp'));
+        $remoteCdpEndpoint = trim((string) data_get($runtime, 'renderer.remote_cdp.endpoint', ''));
         $browserPoolSize = (int) data_get($runtime, 'pool.size', 2);
         $browserPoolWarm = (int) data_get($runtime, 'pool.warm', 1);
         $browserQueueDepth = (int) data_get($runtime, 'pool.queue_depth', 16);
@@ -84,6 +90,7 @@ final class StagehandServeCommandBuilder
             '--no-sandbox='.($noSandbox ? 'true' : 'false'),
             '--ignore-https-errors='.($ignoreHttpsErrors ? 'true' : 'false'),
             '--allow-private-targets='.($allowPrivateTargets ? 'true' : 'false'),
+            '--renderer-driver', $rendererDriver !== '' ? $rendererDriver : 'rod-cdp',
             '--browser-pool-size', (string) $browserPoolSize,
             '--browser-pool-warm', (string) $browserPoolWarm,
             '--browser-queue-depth', (string) $browserQueueDepth,
@@ -109,6 +116,11 @@ final class StagehandServeCommandBuilder
         if ($allowedTargetHosts !== '') {
             $command[] = '--allowed-target-hosts';
             $command[] = $allowedTargetHosts;
+        }
+
+        if ($remoteCdpEndpoint !== '') {
+            $command[] = '--remote-cdp-endpoint';
+            $command[] = $remoteCdpEndpoint;
         }
 
         if ($authSharedSecret !== '') {

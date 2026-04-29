@@ -15,6 +15,8 @@ final class StagehandBinaryCompatibility
     private const REQUIRED_SERVE_FLAGS = [
         'allow-private-targets',
         'request-body-limit-bytes',
+        'renderer-driver',
+        'remote-cdp-endpoint',
     ];
 
     public function assertCompatible(string $binary): void

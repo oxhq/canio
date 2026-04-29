@@ -61,14 +61,14 @@ For launch validation, use the clean-install smoke:
 
 By default it builds a temporary split-style VCS repo from `packages/laravel`, creates a fresh Laravel app, installs `oxhq/canio:^1.0`, validates `canio:install`, and checks one browser-JS render path.
 
-To validate against the public split repository and the published `v1.0.1` GitHub release assets instead of local sources:
+To validate against the public split repository and the published `v1.0.3` GitHub release assets instead of local sources:
 
 ```bash
 CANIO_PACKAGE_SOURCE_MODE=vcs \
 CANIO_PACKAGE_SOURCE_URL=https://github.com/oxhq/canio-laravel.git \
-CANIO_PACKAGE_CONSTRAINT=v1.0.1 \
+CANIO_PACKAGE_CONSTRAINT=v1.0.3 \
 CANIO_RUNTIME_RELEASE_SOURCE=github \
-CANIO_RUNTIME_RELEASE_VERSION=v1.0.1 \
+CANIO_RUNTIME_RELEASE_VERSION=v1.0.3 \
 ./scripts/smoke-launch.sh
 ```
 

@@ -56,6 +56,20 @@ return [
         'port' => (int) env('CANIO_RUNTIME_PORT', 9514),
         'state_path' => env('CANIO_RUNTIME_STATE_PATH', storage_path('app/canio/runtime')),
         'log_path' => env('CANIO_RUNTIME_LOG_PATH', storage_path('logs/canio-runtime.log')),
+        'renderer' => [
+            'driver' => env('CANIO_RENDERER_DRIVER', env('CANIO_RENDERER', 'rod-cdp')),
+            'remote_cdp' => [
+                'endpoint' => env('CANIO_REMOTE_CDP_ENDPOINT', env('CANIO_CDP_ENDPOINT')),
+            ],
+        ],
+        'browser' => [
+            'product' => env('CANIO_BROWSER_PRODUCT', 'chrome'),
+            'install_path' => env('CANIO_BROWSER_INSTALL_PATH', storage_path('app/canio/browsers')),
+            'channel' => env('CANIO_BROWSER_CHANNEL', 'Stable'),
+            'platform' => env('CANIO_BROWSER_PLATFORM'),
+            'manifest_url' => env('CANIO_BROWSER_MANIFEST_URL', 'https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json'),
+            'version_manifest_url' => env('CANIO_BROWSER_VERSION_MANIFEST_URL', 'https://googlechromelabs.github.io/chrome-for-testing/{version}.json'),
+        ],
         'chromium' => [
             'path' => env('CANIO_CHROMIUM_PATH'),
             'channel' => env('CANIO_CHROMIUM_CHANNEL', 'stable'),

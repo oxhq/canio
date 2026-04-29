@@ -341,34 +341,44 @@ func TestDeliverWebhookWithRetryRetriesUntilSuccess(t *testing.T) {
 }
 
 func browserAvailable() bool {
+	return testBrowserPath() != ""
+}
+
+func testBrowserPath() string {
 	candidates := []string{
 		"google-chrome",
 		"chromium",
 		"chromium-browser",
+		"chrome",
+		"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+		"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
 		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 		"/Applications/Chromium.app/Contents/MacOS/Chromium",
 	}
 
 	for _, candidate := range candidates {
-		if strings.HasPrefix(candidate, "/") {
+		if strings.Contains(candidate, "\\") || strings.HasPrefix(candidate, "/") {
 			if _, err := os.Stat(candidate); err == nil {
-				return true
+				return candidate
 			}
 			continue
 		}
 
-		if _, err := exec.LookPath(candidate); err == nil {
-			return true
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path
 		}
 	}
 
-	return false
+	return ""
 }
 
 func testRuntimeConfig(t *testing.T) config.RuntimeConfig {
 	t.Helper()
 
 	cfg := config.Default()
+	if path := testBrowserPath(); path != "" {
+		cfg.ChromiumPath = path
+	}
 	if os.Getenv("CI") != "" {
 		cfg.DisableSandbox = true
 	}
