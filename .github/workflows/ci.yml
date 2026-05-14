@@ -108,5 +108,4 @@ jobs:
           CANIO_CHROMIUM_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
           CANIO_CHROMIUM_NO_SANDBOX: "true"
           CANIO_PACKAGE_SOURCE_MODE: vcs
-          CANIO_RUNTIME_RELEASE_VERSION: v1.0.1
         run: ./scripts/smoke-launch.sh

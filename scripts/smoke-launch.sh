@@ -3,15 +3,34 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGE_CONSTRAINT="${CANIO_PACKAGE_CONSTRAINT:-^1.0}"
+
+resolve_default_runtime_release_version() {
+  local version_file="$ROOT_DIR/packages/laravel/src/Support/PackageVersion.php"
+  local resolved
+
+  if [[ ! -f "$version_file" ]]; then
+    echo "Unable to resolve default runtime release version; missing $version_file" >&2
+    exit 1
+  fi
+
+  resolved="$(sed -n "s/.*TAG = '\\(v[^']*\\)';/\\1/p" "$version_file" | head -n 1)"
+  if [[ -z "$resolved" ]]; then
+    echo "Unable to resolve default runtime release version from $version_file" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$resolved"
+}
+
+PACKAGE_CONSTRAINT="${CANIO_PACKAGE_CONSTRAINT:->=1.0 <2.0}"
 PACKAGE_SOURCE_MODE="${CANIO_PACKAGE_SOURCE_MODE:-vcs}"
 PACKAGE_SOURCE_URL="${CANIO_PACKAGE_SOURCE_URL:-}"
-RUNTIME_RELEASE_VERSION="${CANIO_RUNTIME_RELEASE_VERSION:-v1.0.2}"
+RUNTIME_RELEASE_VERSION="${CANIO_RUNTIME_RELEASE_VERSION:-$(resolve_default_runtime_release_version)}"
 RUNTIME_RELEASE_REPOSITORY="${CANIO_RUNTIME_RELEASE_REPOSITORY:-oxhq/canio}"
 RUNTIME_RELEASE_SOURCE="${CANIO_RUNTIME_RELEASE_SOURCE:-local}"
 RUNTIME_RELEASE_BASE_URL="${CANIO_RUNTIME_RELEASE_BASE_URL:-}"
 RUNTIME_RELEASE_BINARY_PATH="${CANIO_RELEASE_SMOKE_BINARY:-}"
-LARAVEL_VERSION="${CANIO_LARAVEL_VERSION:-^12.0}"
+LARAVEL_VERSION="${CANIO_LARAVEL_VERSION:->=12.0 <13.0}"
 RELEASE_SMOKE_PORT="${CANIO_RELEASE_SMOKE_PORT:-}"
 CANIO_RUNTIME_PORT_VALUE="${CANIO_RUNTIME_PORT:-}"
 KEEP_WORKDIR="${CANIO_SMOKE_KEEP_WORKDIR:-0}"

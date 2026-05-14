@@ -21,6 +21,7 @@ final class CanioDoctorCommand extends Command
         $runtime = (array) config('canio.runtime', []);
         $workingDirectory = (string) ($runtime['working_directory'] ?? base_path());
         $binaryOkay = false;
+        $runtimeOkay = true;
         $mode = strtolower(trim((string) ($runtime['mode'] ?? 'embedded')));
         $rendererDriver = strtolower(trim((string) data_get($runtime, 'renderer.driver', 'rod-cdp')));
 
@@ -67,12 +68,26 @@ final class CanioDoctorCommand extends Command
             ));
         } catch (RuntimeException $exception) {
             if ($mode === 'embedded' && (bool) ($runtime['auto_start'] ?? true)) {
-                $this->warn('Embedded Stagehand is not running yet. It will be started automatically on first use.');
+                $runtimeOkay = false;
+                $this->error('Embedded Stagehand could not be reached after the auto-start readiness check.');
+                $this->warn($exception->getMessage());
+
+                if ($this->usesRedisJobBackend($runtime)) {
+                    $this->warn('Runtime job backend is redis. Verify Redis is reachable or set CANIO_RUNTIME_JOB_BACKEND=memory for non-production local checks.');
+                }
             } else {
                 $this->warn($exception->getMessage());
             }
         }
 
-        return $binaryOkay ? self::SUCCESS : self::FAILURE;
+        return $binaryOkay && $runtimeOkay ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * @param  array<string, mixed>  $runtime
+     */
+    private function usesRedisJobBackend(array $runtime): bool
+    {
+        return strtolower(trim((string) data_get($runtime, 'jobs.backend', ''))) === 'redis';
     }
 }

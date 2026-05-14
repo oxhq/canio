@@ -2,6 +2,18 @@
 
 All notable changes to Canio are documented in this file.
 
+## [1.0.5] - 2026-05-14
+
+Release hardening patch for the current Rod-backed runtime line.
+
+Highlights:
+
+- made `php artisan canio:install` idempotent for existing managed runtime and browser bundles
+- made embedded runtime doctor failures explicit, including Redis backend diagnostics
+- cleaned stale Rod Chromium profile locks across both old and current profile layouts
+- made release smoke defaults derive from the package version and work under Windows `composer.bat`
+- tightened release-surface checks so stale public docs and site release links fail before tag publication
+
 ## [1.0.1] - 2026-03-29
 
 First post-launch patch release.

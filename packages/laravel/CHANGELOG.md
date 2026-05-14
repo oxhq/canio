@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.5] - 2026-05-14
+
+Install, doctor, and release-smoke hardening.
+
+- made `php artisan canio:install` repeatable by reusing an existing managed Stagehand binary and installed browser bundle unless `--force` is passed
+- made `canio:install` propagate failures from config publish, runtime install, browser install, and doctor instead of ending successfully after a failed subcommand
+- made `php artisan canio:doctor` fail in embedded auto-start mode when Stagehand cannot be reached after startup, with a Redis-specific diagnostic when the runtime job backend is Redis
+- cleaned stale Chromium singleton locks from both legacy and current Rod profile layouts
+- hardened the launch smoke defaults so they derive the runtime release from the package version and survive Windows `composer.bat` invocation
+
+For full monorepo release notes, see:
+
+- [oxhq/canio release notes](https://github.com/oxhq/canio/blob/main/docs/releases/v1.0.5.md)
+
 ## [1.0.4] - 2026-04-29
 
 Windows consumer-path patch.

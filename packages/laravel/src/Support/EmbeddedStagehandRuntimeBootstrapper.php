@@ -138,9 +138,16 @@ final class EmbeddedStagehandRuntimeBootstrapper implements StagehandRuntimeBoot
             return;
         }
 
-        foreach (glob($userDataDir.DIRECTORY_SEPARATOR.'browser-*'.DIRECTORY_SEPARATOR.'Singleton*') ?: [] as $lockFile) {
-            if (is_file($lockFile) || is_link($lockFile)) {
-                @unlink($lockFile);
+        $lockPatterns = [
+            $userDataDir.DIRECTORY_SEPARATOR.'browser-*'.DIRECTORY_SEPARATOR.'Singleton*',
+            $userDataDir.DIRECTORY_SEPARATOR.'stagehand-*'.DIRECTORY_SEPARATOR.'browser-*'.DIRECTORY_SEPARATOR.'Singleton*',
+        ];
+
+        foreach ($lockPatterns as $lockPattern) {
+            foreach (glob($lockPattern) ?: [] as $lockFile) {
+                if (is_file($lockFile) || is_link($lockFile)) {
+                    @unlink($lockFile);
+                }
             }
         }
     }
