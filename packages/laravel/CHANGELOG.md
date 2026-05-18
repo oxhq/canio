@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.6] - 2026-05-18
+
+README demo and release-surface refresh.
+
+- added the root `preview.gif` demo asset for the README
+- refreshed root README positioning around browser-grade PDFs, explicit readiness, and render evidence
+- kept artifact examples aligned with the implemented `debug()`, `artifact()`, and `replay()` APIs
+- removed stale `v1.0.1` roadmap docs from the monorepo
+
+For full monorepo release notes, see:
+
+- [oxhq/canio release notes](https://github.com/oxhq/canio/blob/main/docs/releases/v1.0.6.md)
+
 ## [1.0.5] - 2026-05-14
 
 Install, doctor, and release-smoke hardening.

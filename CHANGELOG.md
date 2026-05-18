@@ -2,6 +2,17 @@
 
 All notable changes to Canio are documented in this file.
 
+## [1.0.6] - 2026-05-18
+
+Release-surface refresh for the public project page and README demo.
+
+Highlights:
+
+- added the root `preview.gif` demo asset for the README
+- refreshed the root README around browser-grade PDFs, explicit readiness, and render evidence
+- kept public artifact examples aligned with the implemented `debug()`, `artifact()`, and `replay()` APIs
+- removed the stale `v1.0.1` roadmap document now superseded by release notes
+
 ## [1.0.5] - 2026-05-14
 
 Release hardening patch for the current Rod-backed runtime line.
